@@ -1,7 +1,7 @@
 ---
 name: hermaguard
 description: "Adversarial bug-hunting code review with 3 parallel specialist subagents (Edge Case Hunter, Adversarial Reviewer, Blast Radius + Integration) and a consolidator. Finds what's broken, not what looks nice. Read-only — no fixes applied. Reports only."
-version: 1.0.0
+version: 1.1.0
 category: software-development
 ---
 
@@ -15,7 +15,7 @@ A read-only adversarial review skill that hunts bugs, edge cases, and integratio
 
 Based on synthesis of 8 implementations: Trail of Bits `differential-review` (8-phase security review), BMAD `edge-case-hunter` (exhaustive path tracer), BMAD `adversarial-general` (cynical reviewer persona), BMAD `bmad-code-review` (3-layer parallel review), dementev-dev `adversarial-review` (Claude↔Codex iterative loop), Anthropic `claude-code-security-review` (CI/CD security action), Anthropic Claude Code Code Review Plugin (4 parallel agents), and the Reddit adversarial prompt hack (community-validated adversarial stance).
 
-Full research at `references/cross-implementation-analysis.md`.
+Full research at `references/cross-implementation-analysis.md`. SkillOpt evaluation and run results at `references/skillopt-evaluation.md`. Repeatable runbook for future optimization cycles at `references/skillopt-runbook.md` — project standard per user instruction 2026-06-08.
 
 ## When to Invoke
 
@@ -37,7 +37,9 @@ Full research at `references/cross-implementation-analysis.md`.
 
 ## Slash Command
 
-**`/hermaguard`** — triggers this skill on the current diff. Optional flags:
+**`/hermaguard`** — triggers this skill on the current diff. On Hermes Agent, the skill loader matches keywords ("hermaguard this", "guard this", "adversarial review") — the slash syntax here is for Claude Code compatibility. On Hermes, any of the trigger phrases in "When to Invoke" will load this skill.
+
+Optional flags:
 
 | Flag | Effect |
 |------|--------|
@@ -138,6 +140,7 @@ Context: Only the actual diff hunks — not full files
 - **State transitions**: loading→error, active→expired, before→after auth, first-use vs subsequent
 - **Async**: promise rejection unhandled, race between async operations, partial success states
 - **Concurrency**: shared mutable state, non-atomic read-modify-write
+- **Degenerate handlers**: empty catch/then blocks, no-op error paths, fallthrough switch cases with identical bodies, placeholder return values that mask failures
 
 **Output contract:** Return ONLY a JSON array. Each object has exactly these 4 fields:
 ```json
@@ -174,8 +177,9 @@ Context: Entire file — you need to understand what the change sits within
 - **Rollback Safety:** can this change be safely reverted? Does it need a migration rollback plan?
 - **Schema Drift:** migrations present and correct, backward compatibility maintained, data format changes handled
 - **Error Handling:** swallowed errors (empty catch), missing retries, cascading failure chains, `except: pass`
-- **Observability:** will operators know when this breaks? Are error logs meaningful?
+- **Observability:** will operators know when this breaks? Are error logs meaningful? Are internal error details (stack traces, DB queries, file paths) exposed to untrusted clients through error responses?
 - **Input Validation:** injection vectors (SQL, command, path traversal), unsanitised user input reaching dangerous sinks
+- **Return Value Integrity:** does the function return a semantically correct value in all paths? Are there placeholder/fallback returns that mask failures (e.g., returning a fake success after an empty catch)?
 
 **Finding bar (every finding MUST answer 4 questions):**
 1. What can go wrong? (concrete scenario, not hypothetical)
@@ -234,6 +238,7 @@ Context: Changed files PLUS grep/rg for all callers and callees
 - **Database/Migration:** Schema changes? New queries that need indexes? Backward-compatible writes?
 - **API contracts:** Do route paths, request/response shapes, or error codes change?
 - **Observability:** Are there metrics/alerts on this code path? Will this change trigger false alarms or silence real ones?
+- **Performance anti-patterns:** N+1 queries (DB calls inside loops), unbounded loops without pagination/LIMIT, missing batch operations where available, caching opportunities missed on hot paths
 
 **Output format:**
 ```markdown
@@ -276,7 +281,7 @@ After all 3 subagents return, merge their findings:
    - **MEDIUM:** Edge case with degraded UX, missing error handling in non-critical path, observability gap
    - **LOW:** Minor edge case unlikely to trigger, missing guard on validated input, cosmetic in logs
 
-3. **Cross-reference:** If Agent 3 found a caller that Agent 2 flagged as vulnerable, escalate the finding severity
+3. **Cross-reference:** If Agent 3 found a caller that Agent 2 flagged as vulnerable, escalate the finding severity. Also escalate when Agent 2 flags an auth/security vulnerability and Agent 3 confirms the affected surface is externally accessible (endpoint without auth gate, public API, config exposed to untrusted callers) — the blast radius finding provides independent confirmation of exploitability.
 
 4. **Generate the report**
 
