@@ -1,7 +1,7 @@
 ---
 name: hermaguard
 description: "Adversarial bug-hunting code review with 3 parallel specialist subagents (Edge Case Hunter, Adversarial Reviewer, Blast Radius + Integration) and a consolidator. Finds what's broken, not what looks nice. Read-only — no fixes applied. Reports only."
-version: 1.1.0
+version: 1.2.0
 category: software-development
 ---
 
@@ -118,6 +118,18 @@ Skip: test files (`*.test.*`, `*.spec.*`, `tests/`, `__tests__/`), config files 
 If no files found: "No code changes to guard." Stop.
 
 ### Phase 1: Parallel Dispatch
+
+**Progress visibility (required):** `delegate_task` blocks until all agents return — typically 2–5 minutes with no intermediate output. Never leave the user staring at silence. Immediately before dispatching, print a status block so the wait is expected:
+
+```
+Dispatching 3 adversarial agents over {N} changed files:
+  1. Edge Case Hunter — path/boundary tracing (diff only)
+  2. Adversarial Reviewer — attack surfaces (full files)
+  3. Blast Radius — callers, contracts, revert safety
+
+Read-only phase: nothing is modified. Expect ~2–5 min of background work;
+a completion tick appears as each agent returns.
+```
 
 Spawn all 3 subagents simultaneously as `delegate_task` calls:
 
