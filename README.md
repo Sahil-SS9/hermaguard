@@ -117,35 +117,14 @@ python3 -m pytest test_tools.py -q     # or: python3 -m unittest test_tools.py -
 
 ## Benchmark
 
-The benchmark scores `--json` output from any harness against a seeded corpus.
-It does not run the skill itself.
+Score-only: your harness emits a `--json` report per bug, this scores it against a seeded corpus's ground truth. It does not run the skill itself.
 
 ```bash
-# 1. Run the skill via your harness on each bug, saving JSON to results/<bug-id>.json
-# 2. Score:
 python3 tools/hermaguard-benchmark/benchmark.py \
-  --bugs tools/hermaguard-benchmark/bugs \
-  --results tools/hermaguard-benchmark/results \
-  --output tools/hermaguard-benchmark/results/report.html
+  --bugs tools/hermaguard-benchmark/bugs --results tools/hermaguard-benchmark/results
 ```
 
-**Reference run** (5 seeded bugs, reviewed by a single `claude-opus-4-8` harness;
-corpus authored and reviewed by the same agent, so recall here is an upper bound —
-the corpus is for blind runs by any harness):
-
-| Bug | Severity | Recall | Precision | F1 |
-|-----|----------|--------|-----------|----|
-| SQL injection | CRITICAL | 100% | 50% | 66.7% |
-| Unsafe YAML | HIGH | 100% | 100% | 100% |
-| Missing null check | MEDIUM | 100% | 100% | 100% |
-| Command injection | CRITICAL | 100% | 100% | 100% |
-| Path traversal | HIGH | 100% | 100% | 100% |
-| **Average** | | **100%** | **90%** | **93.3%** |
-
-The one sub-100% precision is a real out-of-ground-truth finding (an unclosed DB
-connection), not a hallucination. For a blind, fully independent run, seed bugs
-authored by someone other than the reviewing harness and record run provenance
-(model id, per-agent outputs, timestamps).
+Run it yourself to get precision/recall/F1 for your harness.
 
 ## Integration with CI
 
