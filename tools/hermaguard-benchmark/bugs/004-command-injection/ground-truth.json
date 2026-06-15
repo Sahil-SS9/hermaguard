@@ -1,0 +1,9 @@
+{
+  "title": "Command injection in ping_host",
+  "description": "host is interpolated into a shell=True command string; a value like '8.8.8.8; rm -rf /' executes arbitrary commands.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {"file": "app.py", "trigger": "subprocess shell=True host interpolation command injection", "description": "arbitrary shell command execution via unsanitised host", "severity": "CRITICAL"}
+  ]
+}

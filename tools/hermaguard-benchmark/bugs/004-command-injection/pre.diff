@@ -1,0 +1,6 @@
+--- a/app.py
++++ b/app.py
+@@ -2,2 +2,2 @@ import subprocess
+ def ping_host(host: str) -> bytes:
+-    return subprocess.check_output(["ping", "-c", "1", host])
++    return subprocess.check_output(f"ping -c 1 {host}", shell=True)

@@ -1,0 +1,8 @@
+--- a/app.py
++++ b/app.py
+@@ -1,3 +1,3 @@
+ def read_doc(name: str) -> str:
+-    safe = os.path.basename(name)
+-    with open(os.path.join("/var/docs", safe)) as f:
++    with open("/var/docs/" + name) as f:
+         return f.read()

@@ -1,7 +1,7 @@
 ---
 name: hermaguard
-description: "Adversarial bug-hunting code review with 3 parallel specialist subagents (Edge Case Hunter, Adversarial Reviewer, Blast Radius + Integration) and a consolidator. Finds what's broken, not what looks nice. Read-only — no fixes applied. Reports only."
-version: 1.2.0
+description: "Adversarial bug-hunting code review with deterministic pre-scan + 3 parallel specialist subagents and a consolidator. Finds what's broken, not what looks nice. Read-only — no fixes applied. Reports only."
+version: 2.0.0
 category: software-development
 ---
 
@@ -9,13 +9,11 @@ category: software-development
 
 ## What This Is
 
-A read-only adversarial review skill that hunts bugs, edge cases, and integration risks in code changes. 3 parallel subagents each attack the code from a different angle, then a consolidator merges and triages the findings into a structured report.
+A read-only adversarial review skill that hunts bugs, edge cases, and integration risks in code changes. A deterministic pre-scan runs static analysis tools first (semgrep, bandit, eslint, etc.), then 3 parallel subagents attack the code from different angles using the pre-scan findings as context. A consolidator merges and triages everything into a structured report.
 
 **This skill does NOT apply fixes.** It finds problems. Octacon or the feature pipeline picks up findings as separate tasks.
 
-Based on synthesis of 8 implementations: Trail of Bits `differential-review` (8-phase security review), BMAD `edge-case-hunter` (exhaustive path tracer), BMAD `adversarial-general` (cynical reviewer persona), BMAD `bmad-code-review` (3-layer parallel review), dementev-dev `adversarial-review` (Claude↔Codex iterative loop), Anthropic `claude-code-security-review` (CI/CD security action), Anthropic Claude Code Code Review Plugin (4 parallel agents), and the Reddit adversarial prompt hack (community-validated adversarial stance).
-
-Full research at `references/cross-implementation-analysis.md`. SkillOpt evaluation and run results at `references/skillopt-evaluation.md`. Repeatable runbook for future optimization cycles at `references/skillopt-runbook.md` — project standard per user instruction 2026-06-08.
+Synthesised from 8 implementations (Trail of Bits `differential-review`, BMAD `edge-case-hunter`/`adversarial-general`/`bmad-code-review`, dementev-dev `adversarial-review`, Anthropic `claude-code-security-review` + Code Review Plugin, and the community adversarial-prompt pattern). Schemas and project config: `references/output-schema.md`.
 
 ## When to Invoke
 
@@ -45,9 +43,11 @@ Optional flags:
 |------|--------|
 | `/hermaguard` | Auto-detect scope (unstaged → staged → branch diff) |
 | `/hermaguard --full` | Run all 3 agents even if <3 files changed |
-| `/hermaguard --quick` | Edge Case Hunter only (fastest) |
+| `/hermaguard --quick` | Single-pass review with all 3 perspectives in one agent (fastest) |
 | `/hermaguard --file path/to/file.ts` | Scope to a specific file |
 | `/hermaguard --since HEAD~3` | Scope to commits since a ref |
+| `/hermaguard --json` | Write structured JSON report alongside markdown |
+| `/hermaguard --no-prescan` | Skip deterministic pre-scan (faster, less thorough) |
 
 The `/hermaguard` command is **opt-in only** — no auto-trigger on commits. Sahil runs it explicitly when he wants adversarial review.
 
@@ -59,17 +59,23 @@ The `/hermaguard` command is **opt-in only** — no auto-trigger on commits. Sah
 | Stance | Constructive refinement | Adversarial, destructive |
 | Scope | Recently modified code | Modified + blast radius |
 | Applies changes | Yes (auto-apply or diffs) | No (read-only report) |
-| Output | Modified files + summary | Risk-triaged findings report |
+| Output | Modified files + summary | Risk-triaged findings report + JSON |
 
 **Chained workflow:**
 ```
 Implement → Verify (tests pass) → Simplify → Hermaguard → Fix (Octacon) → Simplify → Commit
 ```
 
-## Architecture: 3 Agents + Consolidator
+## Architecture: Pre-Scan + 3 Agents + Consolidator
 
 ```
                     ┌──────────────────────────────┐
+                    │   Phase 0: Deterministic      │
+                    │   Pre-Scan (semgrep, bandit,  │
+                    │   eslint, gosec, ruff)        │
+                    └──────────┬───────────────────┘
+                               │ prescan context
+                    ┌──────────▼───────────────────┐
                     │   Hermaguard                  │
                     │   (Orchestrator — this skill) │
                     └──────────┬───────────────────┘
@@ -90,13 +96,18 @@ Implement → Verify (tests pass) → Simplify → Hermaguard → Fix (Octacon) 
                       │ Consolidator │
                       │ Merge +      │
                       │ Triage +     │
-                      │ Report       │
+                      │ Report (MD + │
+                      │ JSON)        │
                       └──────────────┘
 ```
 
 ### Rationale for 3 agents (not 7 like the simplifier swarm)
 
 The simplifier needs many narrow agents because it's mutating code — each change type has its own risk profile and failure mode. Bug hunting is different: it's a pure analysis task. More agents = more duplicate findings, not more coverage. Three distinct perspectives (exhaustive paths, adversarial attack, blast radius) give ~95% coverage without redundant cross-talk.
+
+### Pre-Scan rationale
+
+Pure LLM agents guess at what might be wrong. Static analysis tools (semgrep, bandit, eslint) find real, deterministic issues — SQL injection patterns, unsafe deserialisation, hardcoded secrets. The pre-scan gives agents a floor of real findings to investigate rather than starting from zero. Agents then verify exploitability, assess blast radius, and find logic bugs the scanners miss. The combination catches more than either alone.
 
 ---
 
@@ -117,7 +128,22 @@ Skip: test files (`*.test.*`, `*.spec.*`, `tests/`, `__tests__/`), config files 
 
 If no files found: "No code changes to guard." Stop.
 
-### Phase 1: Parallel Dispatch
+### Phase 0b: Deterministic Pre-Scan
+
+Run `hermaguard-prescan` against the changed files. This is a standalone CLI tool that wraps static analysis.
+
+```bash
+# Run pre-scan — captures deterministic findings before LLM agents run
+hermaguard-prescan --files <changed-files-list> --output /tmp/hermaguard/prescan-{hash}.json 2>/dev/null
+```
+
+If the tool is not installed, skip pre-scan and note it in the report: "Pre-scan unavailable — install hermaguard-prescan for deterministic analysis layer." Do NOT fail.
+
+If the tool returns findings, load the JSON and inject as context into agents 1 and 2. Each finding has `tool`, `rule_id`, `severity`, `file`, `line`, `message`, `category`; full schema in `references/output-schema.md`.
+
+Skip pre-scan with `--no-prescan` flag.
+
+### Phase 1: Parallel Dispatch (Batch Mode)
 
 **Progress visibility (required):** `delegate_task` blocks until all agents return — typically 2–5 minutes with no intermediate output. Never leave the user staring at silence. Immediately before dispatching, print a status block so the wait is expected:
 
@@ -127,22 +153,35 @@ Dispatching 3 adversarial agents over {N} changed files:
   2. Adversarial Reviewer — attack surfaces (full files)
   3. Blast Radius — callers, contracts, revert safety
 
-Read-only phase: nothing is modified. Expect ~2–5 min of background work;
-a completion tick appears as each agent returns.
+Read-only phase: nothing is modified. Expect ~2–5 min of background work.
 ```
 
-Spawn all 3 subagents simultaneously as `delegate_task` calls:
+**Batch dispatch:** All 3 agents are dispatched simultaneously via your harness's parallel subagent mechanism. This reduces LLM round-trips from 4 to 2 (parallel dispatch + consolidator). Agents are independent — their outputs are consumed only by the consolidator.
+
+```python
+# Hermes Agent: single batch call via delegate_task tasks array
+# Claude Code: parallel subagent spawn
+# Codex CLI: concurrent subprocess delegation
+# Any harness: dispatch 3 reviewers in parallel, collect outputs
+```
+
+For `--quick` mode (small diffs, <3 files): use a single `delegate_task` with all 3 perspectives as sequential sections in one prompt:
+```
+You are three reviewers operating in sequence. First, think as Edge Case Hunter... 
+Now, think as Adversarial Reviewer... Now, think as Blast Radius analyst. 
+Then output one consolidated report.
+```
 
 #### Agent 1: Edge Case Hunter
 
 ```
-Scope: Diff only (git diff output)
-Context: Only the actual diff hunks — not full files
+Scope: Diff only (git diff output) + Pre-scan findings as context
+Context: Only the actual diff hunks — not full files. If pre-scan ran, use those findings as starting points — investigate exploitability, don't re-discover what semgrep already found.
 ```
 
 **Stance:** You are a pure path tracer. Method-driven, not attitude-driven. Never comment on whether code is good or bad; only list missing handling.
 
-**Method:** Walk every branching path and boundary condition reachable from the changed lines. Exhaustively enumerate — do not hunt by intuition.
+**Method:** Walk every branching path and boundary condition reachable from the changed lines. Exhaustively enumerate — do not hunt by intuition. When pre-scan findings are present, start from those locations and trace outward.
 
 **Edge classes to check:**
 - **Control flow**: missing else/default, unguarded switch fall-through, early returns that skip cleanup
@@ -174,13 +213,13 @@ An empty array `[]` is valid when no unhandled paths are found.
 #### Agent 2: Adversarial Reviewer
 
 ```
-Scope: Full file contents of changed files (read_file on each changed file)
-Context: Entire file — you need to understand what the change sits within
+Scope: Full file contents of changed files (read_file on each changed file) + Pre-scan findings as context
+Context: Entire file — you need to understand what the change sits within. Pre-scan findings provide deterministic starting points — verify these and hunt for additional vulnerabilities.
 ```
 
 **Stance:** "Your job is to break confidence in the change, not to validate it." Default to skepticism. Assume the change can fail in subtle, high-cost, or user-visible ways until the evidence says otherwise. Do not give credit for good intent, partial fixes, or likely follow-up work. If something only works on the happy path, treat that as a real weakness.
 
-**Persona:** You are a cynical, jaded reviewer with zero patience for sloppy work. Use a precise, professional tone — no profanity, no personal attacks. But be relentless.
+**Persona:** You are a precise, professional reviewer looking for real vulnerabilities. No profanity, no personal attacks, no speculation without a concrete trigger scenario. But be relentless — if something can fail, say how.
 
 **Attack surfaces (check each — skip if not applicable):**
 - **Auth & Permissions:** bypasses, privilege escalation, missing checks on new endpoints
@@ -295,24 +334,27 @@ After all 3 subagents return, merge their findings:
 
 3. **Cross-reference:** If Agent 3 found a caller that Agent 2 flagged as vulnerable, escalate the finding severity. Also escalate when Agent 2 flags an auth/security vulnerability and Agent 3 confirms the affected surface is externally accessible (endpoint without auth gate, public API, config exposed to untrusted callers) — the blast radius finding provides independent confirmation of exploitability.
 
-4. **Generate the report**
+4. **Incorporate pre-scan findings:** Pre-scan findings that weren't duplicated by any agent still go in the report, marked `source: prescan` with the tool name. They're lower confidence until an agent investigates, but they're real static analysis hits.
+
+5. **Generate the report**
 
 ---
 
 ### Phase 3: Report
 
-Output a single structured markdown report. The report is written to disk AND summarised in chat.
+Output a structured markdown report AND (if `--json` flag was passed) a JSON file. Both are written to disk; markdown is also summarised in chat.
 
 **Report location:** `/tmp/hermaguard/hermaguard-{timestamp}-{short-hash}.md`
+**JSON location:** `/tmp/hermaguard/hermaguard-{timestamp}-{short-hash}.json`
 
 **Report structure:**
-
 ```markdown
 # Hermaguard Report
 
 **Date:** {DD/MM/YY HH:MM}
 **Scope:** {N} files changed, {M} files in blast radius
 **Diff reference:** `git diff {from}..{to}`
+**Pre-scan:** {N} findings from {tools} | {if skipped, note reason}
 
 ---
 
@@ -343,6 +385,12 @@ Output a single structured markdown report. The report is written to disk AND su
 
 ---
 
+## Pre-Scan Findings
+
+{Findings from static analysis that weren't duplicated by agents. Each: tool, rule_id, file:line, message. Compact table format.}
+
+---
+
 ## Blast Radius Map
 
 {Files affected, callers, downstream — links to the Integration section}
@@ -361,6 +409,8 @@ Output a single structured markdown report. The report is written to disk AND su
 
 **No fixes were applied by this review.** Findings to be picked up by Octacon as separate tasks.
 ```
+
+**JSON output schema:** four top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
 
 ---
 
@@ -384,34 +434,21 @@ The feature pipeline's review step (`sdlc-review`) checks that Hermaguard was ru
 ### With KENSEI Governance
 CRITICAL findings should be logged to `#governance` — they're system-level risks.
 
+### With Feedback MCP Server
+If the `hermaguard-feedback` MCP server is available, record findings and query suppression rules:
+- After report generation: call `record_findings` to store all findings for precision tracking
+- Before Agent 1 dispatch: call `get_suppression_rules` to load patterns that have been repeatedly dismissed
+
+### With Knowledge Graph MCP Server
+If the `kensei-kg` MCP server is available, query before review:
+- Call `search_patterns(query)` for each major file/function being changed
+- Call `get_related_concepts(finding_text)` on any finding to link to wiki entries
+
 ---
 
 ## Configuration
 
-Project-level config (optional, create `.kensei/hermaguard.yaml` in the project root):
-
-```yaml
-hermaguard:
-  enabled: true
-  auto_trigger: false           # Hermaguard is opt-in — no auto-trigger on commit
-  scope: modified               # modified | staged | all
-  skip_patterns:
-    - "*.test.*"
-    - "*.spec.*"
-    - "*.md"
-    - "*.json"
-    - "*.yaml"
-  max_files: 50                 # skip if more than this many files changed
-  blast_radius:
-    max_depth: 2                # max caller/callee hop depth
-    skip_patterns:
-      - "node_modules/"
-      - "vendor/"
-      - "dist/"
-  severity_threshold: LOW       # minimum severity to report (LOW reports everything)
-  agents:
-    parallel: 3                 # always 3 — non-configurable
-```
+Optional project config at `.kensei/hermaguard.yaml` (scope, skip_patterns, max_files, blast_radius depth, severity_threshold, prescan toggle, json_output, feedback MCP url). Full annotated template in `references/output-schema.md`. All keys have sensible defaults; the skill runs with no config file.
 
 ---
 
@@ -422,6 +459,7 @@ hermaguard:
 Hermaguard complete.
 
 Scope: 4 files changed, 12 files in blast radius
+Pre-scan: 3 findings from bandit, ruff
 Findings: 7 total
   CRITICAL: 0
   HIGH: 2
@@ -429,8 +467,9 @@ Findings: 7 total
   LOW: 2
 
 Report: /tmp/hermaguard/hermaguard-20260608-1430-a1b2c3d.md
+JSON: /tmp/hermaguard/hermaguard-20260608-1430-a1b2c3d.json
 
-Top finding: [HIGH] Race condition in payment processing (Agent 2)
+Top finding: [HIGH] Race condition in payment processing (Agent 2 + Agent 1 agree)
   → src/payments/handler.ts:42 — concurrent calls can double-charge
 
 No fixes applied. Handing findings to Octacon.
@@ -445,7 +484,10 @@ No fixes applied. Handing findings to Octacon.
 - **Don't fight the blast radius agent.** If it says "safe to revert," believe it unless you have concrete contrary evidence.
 - **Don't let the adversarial agent go soft.** If it returns "no findings," ask it to re-examine — adversarial reviewers should ALWAYS find something worth noting, even if LOW severity.
 - **Don't mix guarding with simplification.** They're separate skills with separate triggering conditions. Guard after simplify, never during.
-- **Report file is mandatory.** Don't just summarise in chat — write the full report to disk for governance and traceability.
+- **Report files are mandatory.** Don't just summarise in chat — write the full report AND (with --json) JSON to disk for governance and traceability.
+- **Pre-scan may be unavailable.** If `hermaguard-prescan` isn't installed, skip it gracefully and note it. Don't fail the review because a companion tool is missing.
+- **Don't re-discover pre-scan findings.** If semgrep already found an SQL injection, Agent 2 should verify exploitability and assess impact, not "discover" it again. The finding should appear once in the report, credited to both prescan and the agent that investigated it.
+- **JSON output is additive, not replacement.** Markdown report is always written. JSON is additional when `--json` is passed. Both are equally authoritative.
 
 ---
 

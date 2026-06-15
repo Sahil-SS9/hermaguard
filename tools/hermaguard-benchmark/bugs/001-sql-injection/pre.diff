@@ -1,0 +1,10 @@
+--- a/app.py
++++ b/app.py
+@@ -2,6 +2,6 @@ import sqlite3
+ def get_user_by_name(username: str):
+     conn = sqlite3.connect("users.db")
+     cur = conn.cursor()
+-    cur.execute("SELECT * FROM users WHERE name = ?", (username,))
++    query = f"SELECT * FROM users WHERE name = '{username}'"
++    cur.execute(query)
+     return cur.fetchone()

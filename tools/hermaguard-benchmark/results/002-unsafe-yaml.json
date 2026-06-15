@@ -1,0 +1,7 @@
+{
+  "run_id": "002-unsafe-yaml", "timestamp": "2026-06-15T02:14:48Z", "run_ok": true,
+  "findings": [
+    {"id": "HG-001", "severity": "HIGH", "source_agent": "edge-case-hunter", "file": "app.py", "trigger_condition": "yaml.load without SafeLoader on file contents at line 5", "consequence": "arbitrary code execution via crafted YAML tags"}
+  ],
+  "summary": {"total": 1, "critical": 0, "high": 1, "medium": 0, "low": 0}, "provenance": {"model": "claude-opus-4-8", "harness": "claude-code single-agent", "mode": "single-pass review, three perspectives by one reviewer (not three independent subagents)", "blind": false, "note": "corpus authored and reviewed by the same agent; recall is an upper bound. Reusable for blind runs by any harness."}
+}

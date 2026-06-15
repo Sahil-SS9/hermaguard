@@ -1,0 +1,7 @@
+{
+  "run_id": "004-command-injection", "timestamp": "2026-06-15T02:15:19Z", "run_ok": true,
+  "findings": [
+    {"id": "HG-001", "severity": "CRITICAL", "source_agent": "adversarial-reviewer", "file": "app.py", "trigger_condition": "host interpolated into shell=True command string at line 4", "consequence": "arbitrary shell command execution"}
+  ],
+  "summary": {"total": 1, "critical": 1, "high": 0, "medium": 0, "low": 0}, "provenance": {"model": "claude-opus-4-8", "harness": "claude-code single-agent", "mode": "single-pass review, three perspectives by one reviewer (not three independent subagents)", "blind": false, "note": "corpus authored and reviewed by the same agent; recall is an upper bound. Reusable for blind runs by any harness."}
+}

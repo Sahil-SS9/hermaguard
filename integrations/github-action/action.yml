@@ -1,0 +1,221 @@
+name: HermaGuard Code Review
+description: Run adversarial code review on pull requests
+
+inputs:
+  block_on:
+    description: Minimum severity to block merge (CRITICAL, HIGH, or never)
+    default: 'CRITICAL'
+  comment_mode:
+    description: How to post findings (inline on diff lines, or summary comment)
+    default: 'inline'
+  min_severity:
+    description: Minimum severity to report (LOW reports everything)
+    default: 'MEDIUM'
+  max_files:
+    description: Skip if more than this many files changed
+    default: '50'
+  skip_patterns:
+    description: File patterns to skip (newline-separated)
+    default: '*.test.*\n*.spec.*\n*.md\n*.json\n*.yaml'
+  hermaguard_args:
+    description: Additional arguments for hermaguard
+    default: ''
+  prescan_enabled:
+    description: Run deterministic pre-scan before LLM review
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install HermaGuard tools
+      shell: bash
+      run: |
+        # Install hermaguard-prescan (deterministic layer)
+        if [ -f tools/hermaguard-prescan/hermaguard-prescan ]; then
+          chmod +x tools/hermaguard-prescan/hermaguard-prescan
+          sudo ln -sf $(pwd)/tools/hermaguard-prescan/hermaguard-prescan /usr/local/bin/hermaguard-prescan
+        fi
+
+        # Install optional linters for prescan
+        pip install bandit ruff semgrep 2>/dev/null || true
+        npm install -g eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin 2>/dev/null || true
+
+    - name: Get changed files
+      id: files
+      shell: bash
+      run: |
+        # Get files changed in this PR vs base branch
+        BASE_SHA="${{ github.event.pull_request.base.sha }}"
+        HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+        if [ -z "$BASE_SHA" ]; then
+          # Not a PR event — use push range
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.event.after }}"
+        fi
+
+        if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+          # First commit or unknown base — use HEAD~1
+          BASE_SHA="HEAD~1"
+        fi
+
+        CHANGED=$(git diff --name-only $BASE_SHA $HEAD_SHA -- '*.ts' '*.tsx' '*.js' '*.py' '*.go' '*.rs' '*.java' 2>/dev/null)
+
+        # Apply skip patterns
+        SKIP="${{ inputs.skip_patterns }}"
+        FILTERED=""
+        for file in $CHANGED; do
+          SKIP_FILE=0
+          for pattern in $(echo "$SKIP" | tr '\n' ' '); do
+            if [[ "$file" == $pattern ]]; then
+              SKIP_FILE=1
+              break
+            fi
+          done
+          if [ $SKIP_FILE -eq 0 ]; then
+            FILTERED="$FILTERED $file"
+          fi
+        done
+
+        FILTERED=$(echo "$FILTERED" | xargs)  # trim
+        FILE_COUNT=$(echo "$FILTERED" | wc -w)
+
+        echo "files=${FILTERED}" >> $GITHUB_OUTPUT
+        echo "count=${FILE_COUNT}" >> $GITHUB_OUTPUT
+
+        if [ -z "$FILTERED" ]; then
+          echo "No code files changed. Skipping HermaGuard."
+        elif [ "$FILE_COUNT" -gt "${{ inputs.max_files }}" ]; then
+          echo "Too many files ($FILE_COUNT > ${{ inputs.max_files }}). Skipping HermaGuard."
+        fi
+
+    - name: Run HermaGuard Pre-Scan
+      if: ${{ steps.files.outputs.count > 0 && steps.files.outputs.count <= inputs.max_files && inputs.prescan_enabled == 'true' }}
+      id: prescan
+      shell: bash
+      run: |
+        mkdir -p /tmp/hermaguard
+        echo "Running pre-scan on ${{ steps.files.outputs.count }} files..."
+        hermaguard-prescan --files "${{ steps.files.outputs.files }}" \
+          --output /tmp/hermaguard/prescan.json 2>&1 || true
+        if [ -f /tmp/hermaguard/prescan.json ]; then
+          echo "Pre-scan complete."
+        else
+          echo "Pre-scan unavailable."
+        fi
+
+    - name: Run HermaGuard
+      if: ${{ steps.files.outputs.count > 0 && steps.files.outputs.count <= inputs.max_files }}
+      id: hermaguard
+      shell: bash
+      run: |
+        mkdir -p /tmp/hermaguard
+        echo "Running HermaGuard review..."
+        # hermaguard is invoked via claude/codex as a skill
+        # This step depends on the deployment environment
+        # For CI, we use the json output mode
+        echo "NOTE: Full HermaGuard LLM review requires an active Claude/Codex session."
+        echo "See: https://github.com/Sahil-SS9/hermaguard for setup instructions."
+        echo "Pre-scan output available at /tmp/hermaguard/prescan.json"
+
+    - name: Post findings as PR comments
+      if: ${{ steps.files.outputs.count > 0 && always() }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          let body = '';
+
+          // Use pre-scan output as the primary structured findings in CI
+          // Full HermaGuard (LLM review) runs interactively; CI uses pre-scan
+          try {
+            const prescan = JSON.parse(fs.readFileSync('/tmp/hermaguard/prescan.json', 'utf8'));
+            const stats = prescan.stats || {};
+
+            body = `## 🔍 HermaGuard Pre-Scan
+
+          **${stats.total_findings || 0} findings** from ${stats.tools_run?.join(', ') || 'no tools'}
+
+          `;
+
+            if (prescan.findings && prescan.findings.length > 0) {
+              // Group by severity
+              const groups = {};
+              for (const f of prescan.findings) {
+                const sev = f.severity || 'LOW';
+                if (!groups[sev]) groups[sev] = [];
+                if (groups[sev].length < 10) { // cap per severity
+                  groups[sev].push(`- \`${f.file}:${f.line}\` — **${f.tool}** ${f.message}`);
+                }
+              }
+
+              for (const [sev, items] of Object.entries(groups)) {
+                body += `### ${sev}\n${items.join('\n')}\n\n`;
+              }
+
+              if (prescan.findings.length > 30) {
+                body += `\n*${prescan.findings.length - 30} more findings truncated. See full output.*\n`;
+              }
+            } else {
+              body += '✅ No deterministic issues found.\n';
+            }
+
+            body += `\n> Run \`/hermaguard\` for full adversarial LLM review.`;
+          } catch (e) {
+            body = `## 🔍 HermaGuard
+
+          Pre-scan unavailable: ${e.message}
+
+          Run \`/hermaguard\` locally for adversarial review.`;
+          }
+
+          // Post comment
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });
+
+    - name: Block on critical findings (optional)
+      if: ${{ inputs.block_on != 'never' && steps.prescan.outcome == 'success' && always() }}
+      shell: bash
+      run: |
+        if [ -f /tmp/hermaguard/prescan.json ]; then
+          CRITICAL=$(python3 -c "
+          import json
+          with open('/tmp/hermaguard/prescan.json') as f:
+              data = json.load(f)
+          crit = sum(1 for f in data.get('findings',[]) if f.get('severity') == 'CRITICAL')
+          print(crit)
+          ")
+
+          if [ "$CRITICAL" -gt 0 ] && [ "${{ inputs.block_on }}" == "CRITICAL" ]; then
+            echo "BLOCKING: ${CRITICAL} CRITICAL findings detected."
+            exit 1
+          fi
+
+          HIGH_COUNT=$(python3 -c "
+          import json
+          with open('/tmp/hermaguard/prescan.json') as f:
+              data = json.load(f)
+          crit = sum(1 for f in data.get('findings',[]) if f.get('severity') in ('CRITICAL','HIGH'))
+          print(crit)
+          ")
+
+          if [ "$HIGH_COUNT" -gt 0 ] && [ "${{ inputs.block_on }}" == "HIGH" ]; then
+            echo "BLOCKING: ${HIGH_COUNT} CRITICAL+HIGH findings detected."
+            exit 1
+          fi
+        fi
+        echo "No blocking findings."

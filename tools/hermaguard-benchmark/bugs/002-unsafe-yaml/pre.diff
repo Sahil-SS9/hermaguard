@@ -1,0 +1,7 @@
+--- a/app.py
++++ b/app.py
+@@ -2,4 +2,4 @@ import yaml
+ def load_config(path: str) -> dict:
+     with open(path) as f:
+-        return yaml.safe_load(f)
++        return yaml.load(f)

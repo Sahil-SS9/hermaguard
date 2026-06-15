@@ -1,0 +1,8 @@
+--- a/app.py
++++ b/app.py
+@@ -2,4 +2,3 @@ def get_user_email(cur, user_id: int) -> str:
+     cur.execute("SELECT email FROM users WHERE id = ?", (user_id,))
+     row = cur.fetchone()
+-    if row is None:
+-        return None
+     return row[0]

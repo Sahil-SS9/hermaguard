@@ -1,0 +1,9 @@
+{
+  "title": "Missing null check on fetchone result",
+  "description": "fetchone() returns None when no row matches; indexing row[0] then raises TypeError, crashing the caller.",
+  "severity": "MEDIUM",
+  "category": "logic",
+  "findings": [
+    {"file": "app.py", "trigger": "cursor fetchone row indexed without null check", "description": "TypeError crash when user_id not found", "severity": "MEDIUM"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "title": "SQL injection in get_user_by_name",
+  "description": "Username interpolated into SQL via f-string; attacker-controlled input reaches the query unsanitised.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {"file": "app.py", "trigger": "f-string SQL query username interpolation", "description": "SQL injection via unparameterised query", "severity": "CRITICAL"}
+  ]
+}
