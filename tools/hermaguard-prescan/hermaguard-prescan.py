@@ -17,6 +17,7 @@ Exit code 1 on tool failure (unavailable linter, no files, etc).
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -374,7 +375,127 @@ def run_tool(tool_def: dict, files: list, tmpdir: str) -> tuple[str | None, list
     return None, findings
 
 
-def run_prescan(files: list, restrict_tools: list | None = None) -> dict:
+# ── Suppression rules (compiled from dismissed findings via hermaguard-compile-rules) ──
+
+DEFAULT_RULES_PATHS = [
+    ".kensei/hermaguard-rules.yaml",
+    "hermaguard-rules.yaml",
+]
+
+
+def load_suppression_rules(path: str | None = None) -> tuple[list, str | None]:
+    """Load compiled suppression rules. Returns (rules, source_path_or_None).
+
+    Accepts the exact format hermaguard-compile-rules writes: a JSON-superset
+    YAML list of dicts with keys rule_id/pattern/agent/dismissals. Parsing is
+    stdlib-only via json per-document; a fallback regex extractor handles
+    hand-edited files. Missing file = no rules, never an error.
+    """
+    candidates = [path] if path else DEFAULT_RULES_PATHS
+    for cand in candidates:
+        if not cand:
+            continue
+        try:
+            if not os.path.isfile(cand):
+                continue
+            with open(cand) as f:
+                text = f.read()
+        except OSError:
+            continue
+        rules = _parse_rules_text(text)
+        if rules:
+            return rules, cand
+        return [], cand  # file exists but empty of rules
+    return [], None
+
+
+def _parse_rules_text(text: str) -> list:
+    """Parse the compile-rules YAML subset with stdlib only."""
+    rules = []
+    current = {}
+    # Try whole-document JSON first (valid when the file is a pure JSON array)
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [r for r in data if isinstance(r, dict) and r.get("pattern")]
+    except json.JSONDecodeError:
+        pass
+    # Line-oriented parse of the known key set
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("#") or not s.startswith("- ") and not s[:1].isalpha():
+            # allow "- rule_id:" item starts and "  key: value" continuations
+            if not s.startswith("- ") and not (current and s and ":" in s and not s.startswith("-")):
+                continue
+        m = re.match(r"^-\s*(rule_id|pattern|agent|dismissals|file_scope):\s*(.*)$", s)
+        if m:
+            if current:
+                rules.append(current)
+            current = {m.group(1): _coerce_scalar(m.group(2))}
+            continue
+        m = re.match(r"^(rule_id|pattern|agent|dismissals|file_scope):\s*(.*)$", s)
+        if m and current is not None:
+            key = m.group(1)
+            val = _coerce_scalar(m.group(2))
+            if key == "rule_id" and current:
+                rules.append(current)
+                current = {}
+            current[key] = val
+            continue
+    if current:
+        rules.append(current)
+    return [r for r in rules if r.get("pattern")]
+
+
+def _coerce_scalar(v: str):
+    v = v.strip()
+    if v.startswith('"') and v.endswith('"') and len(v) >= 2:
+        try:
+            return json.loads(v)
+        except json.JSONDecodeError:
+            return v[1:-1]
+    if v.startswith("'") and v.endswith("'") and len(v) >= 2:
+        return v[1:-1]
+    if v.isdigit():
+        return int(v)
+    return v
+
+
+def apply_suppression_rules(findings: list, rules: list) -> tuple[list, list]:
+    """Filter findings against compiled suppression rules.
+
+    A finding is suppressed when ALL of:
+      - rule.pattern (case-insensitive substring) appears in the finding's
+        message, AND
+      - rule.file_scope is empty or equals the finding's file basename/dir.
+    Suppressed findings are dropped from the output and listed in stats.
+    Returns (kept_findings, suppressed_findings).
+    """
+    if not rules:
+        return findings, []
+    kept, suppressed = [], []
+    for f in findings:
+        hay = f"{f.get('message', '')} {f.get('rule_id', '')}".lower()
+        fname = f.get("file", "")
+        dropped = False
+        for r in rules:
+            pat = str(r.get("pattern", "")).lower()
+            if not pat:
+                continue
+            scope = str(r.get("file_scope", "") or "")
+            scope_ok = (not scope) or (scope and (scope in fname or os.path.basename(fname) == os.path.basename(scope)))
+            if pat in hay and scope_ok:
+                dropped = True
+                break
+        if dropped:
+            suppressed.append(f)
+        else:
+            kept.append(f)
+    return kept, suppressed
+
+
+def run_prescan(files: list, restrict_tools: list | None = None,
+                rules_path: str | None = None) -> dict:
     """Main entry point. Run all applicable tools on given files.
     Returns the output dict.
     """
@@ -434,18 +555,25 @@ def run_prescan(files: list, restrict_tools: list | None = None) -> dict:
             seen.add(key)
             deduped.append(f)
 
+    # Apply compiled suppression rules (hermaguard-compile-rules output)
+    rules, rules_source = load_suppression_rules(rules_path)
+    kept, suppressed = apply_suppression_rules(deduped, rules)
+
     by_sev = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
-    for f in deduped:
+    for f in kept:
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
 
     return {
-        "findings": deduped,
+        "findings": kept,
         "stats": {
             "tools_run": tools_run,
             "tools_skipped": tools_skipped,
-            "total_findings": len(deduped),
+            "total_findings": len(kept),
             "by_severity": by_sev,
             "files_scanned": len(files),
+            "suppression_rules_applied": len(rules),
+            "suppression_rules_source": rules_source,
+            "suppressed_findings": len(suppressed),
             "hermaguard_prescan_version": VERSION,
         },
     }
@@ -473,6 +601,10 @@ def main():
         help="Comma-separated list of tools to restrict to (e.g., 'bandit,ruff'). Default: auto-detect from file extensions."
     )
     parser.add_argument(
+        "--rules",
+        help="Path to compiled suppression rules (hermaguard-compile-rules output). Default: .kensei/hermaguard-rules.yaml or hermaguard-rules.yaml in cwd."
+    )
+    parser.add_argument(
         "--version", action="version", version=f"%(prog)s {VERSION}"
     )
     args = parser.parse_args()
@@ -492,7 +624,7 @@ def main():
         }
     else:
         restrict = [t.strip() for t in args.tools.split(",")] if args.tools else None
-        output = run_prescan(files, restrict)
+        output = run_prescan(files, restrict, rules_path=args.rules)
 
     # Write output
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)

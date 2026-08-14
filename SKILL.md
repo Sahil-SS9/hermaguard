@@ -134,8 +134,12 @@ Run `hermaguard-prescan` against the changed files. This is a standalone CLI too
 
 ```bash
 # Run pre-scan — captures deterministic findings before LLM agents run
+# Suppression rules (.kensei/hermaguard-rules.yaml, compiled from dismissed
+# findings via hermaguard-compile-rules) are loaded and applied automatically.
 hermaguard-prescan --files <changed-files-list> --output /tmp/hermaguard/prescan-{hash}.json 2>/dev/null
 ```
+
+**The loop is closed:** dismiss a finding as false positive 3× (feedback MCP `accept_finding`) → `hermaguard-compile-rules` compiles it into a suppression rule → the pre-scan applies that rule on every future run. Learned noise stays suppressed; the stats block reports `suppression_rules_applied` and `suppressed_findings` so suppression is always visible, never silent.
 
 If the tool is not installed, skip pre-scan and note it in the report: "Pre-scan unavailable — install hermaguard-prescan for deterministic analysis layer." Do NOT fail.
 
