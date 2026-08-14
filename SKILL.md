@@ -143,6 +143,25 @@ If the tool returns findings, load the JSON and inject as context into agents 1 
 
 Skip pre-scan with `--no-prescan` flag.
 
+### Phase 0c: Coverage Ledger
+
+Before dispatching agents, build the coverage ledger for the changed files:
+
+```bash
+hermaguard-coverage --files <changed-files-list> --ledger /tmp/hermaguard/ledger-{hash}.json
+# (tool lives at tools/hermaguard-coverage/hermaguard-coverage.py)
+```
+
+The registry covers the 2024 MITRE CWE Top 25 (verified against cwe.mitre.org) plus race conditions, resource leaks, exception handling, and 4 Hermaguard-native classes (async rejection, degenerate handlers, state transitions, partial writes). Language rules mark memory-unsafe classes N/A for safe languages (CWE-787/125/416/119 for Python/TS/Go/Java; Rust keeps them as hints via `unsafe`).
+
+**This ledger is the accountability contract for the report.** The consolidator MUST produce a `coverage` array where every applicable class appears exactly once with status `finding` (backed by a real finding citing `classes: ["CWE-89"]`), `clean` (checked, no issue), or `not_applicable` (with reason). Validate before shipping the report:
+
+```bash
+hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
+```
+
+Exit 1 = coverage gaps = the report is incomplete. No exceptions. A review that silently skips bug classes is theatre — the coverage check is what makes it accountable.
+
 ### Phase 1: Parallel Dispatch (Batch Mode)
 
 **Progress visibility (required):** `delegate_task` blocks until all agents return — typically 2–5 minutes with no intermediate output. Never leave the user staring at silence. Immediately before dispatching, print a status block so the wait is expected:
@@ -336,7 +355,15 @@ After all 3 subagents return, merge their findings:
 
 4. **Incorporate pre-scan findings:** Pre-scan findings that weren't duplicated by any agent still go in the report, marked `source: prescan` with the tool name. They're lower confidence until an agent investigates, but they're real static analysis hits.
 
-5. **Generate the report**
+5. **Build the coverage array (mandatory):** Using the Phase 0c ledger, emit one coverage entry per applicable class — `finding` (a finding in this report cites it via its `classes` field), `clean` (agents checked it, nothing found), or `not_applicable` (with reason). Then validate:
+
+   ```bash
+   hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
+   ```
+
+   If validation fails (exit 1), do NOT ship the report — fill the gaps or re-dispatch the agent that missed the class. Findings must cite their classes (`classes: ["CWE-89", "CWE-362"]`) so claims and coverage stay consistent.
+
+6. **Generate the report**
 
 ---
 
@@ -391,6 +418,12 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 
 ---
 
+## Coverage Ledger
+
+{One row per applicable class: class id, name, status (finding/clean/not_applicable), and for findings the finding ID that backs it. Generated from the Phase 0c ledger and validated with hermaguard-coverage --check-report. This section is what makes the review accountable — a missing row is an unreviewed bug class.}
+
+---
+
 ## Blast Radius Map
 
 {Files affected, callers, downstream — links to the Integration section}
@@ -410,7 +443,7 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 **No fixes were applied by this review.** Findings to be picked up by Octacon as separate tasks.
 ```
 
-**JSON output schema:** four top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
+**JSON output schema:** five top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason — the accountability ledger), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
 
 ---
 
@@ -485,6 +518,7 @@ No fixes applied. Handing findings to Octacon.
 - **Don't let the adversarial agent go soft.** If it returns "no findings," ask it to re-examine — adversarial reviewers should ALWAYS find something worth noting, even if LOW severity.
 - **Don't mix guarding with simplification.** They're separate skills with separate triggering conditions. Guard after simplify, never during.
 - **Report files are mandatory.** Don't just summarise in chat — write the full report AND (with --json) JSON to disk for governance and traceability.
+- **Coverage is not optional.** A report without a passing coverage check is incomplete — every applicable class accounted for, every `finding` status backed by a finding that cites the class. Never mark a class `clean` to skip work: agents that didn't check a class must say so, and the check fails until they do.
 - **Pre-scan may be unavailable.** If `hermaguard-prescan` isn't installed, skip it gracefully and note it. Don't fail the review because a companion tool is missing.
 - **Don't re-discover pre-scan findings.** If semgrep already found an SQL injection, Agent 2 should verify exploitability and assess impact, not "discover" it again. The finding should appear once in the report, credited to both prescan and the agent that investigated it.
 - **JSON output is additive, not replacement.** Markdown report is always written. JSON is additional when `--json` is passed. Both are equally authoritative.

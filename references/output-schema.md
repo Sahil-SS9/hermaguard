@@ -56,6 +56,7 @@ The consolidator writes this alongside the markdown report:
       "consequence": "Double-charge on payment",
       "recommendation": "Add distributed lock on orderId before processing",
       "exploit_poc": "Send two identical requests within 100ms window",
+      "classes": ["CWE-362", "HG-PARTIAL-WRITE"],
       "source_prescan": false
     },
     {
@@ -84,6 +85,11 @@ The consolidator writes this alongside the markdown report:
     "config_affected": ["PAYMENT_TIMEOUT_MS"],
     "revert_safety": {"safe": true, "procedure": "Roll back commit, no migration needed"}
   },
+  "coverage": [
+    {"class_id": "CWE-362", "status": "finding", "backed_by": ["HG-001"]},
+    {"class_id": "CWE-89", "status": "clean"},
+    {"class_id": "CWE-787", "status": "not_applicable", "reason": "memory-unsafe class N/A for this language"}
+  ],
   "verdict": {
     "overall_risk": "HIGH",
     "recommended_actions": {
