@@ -1,0 +1,17 @@
+{
+  "title": "Unbounded loop over user input",
+  "description": "parse runs until end-of-stream with no cap on iterations or size.",
+  "severity": "MEDIUM",
+  "category": "resources",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "read loop without record-count or byte cap",
+      "description": "Memory exhaustion DoS from large uploads",
+      "severity": "MEDIUM",
+      "classes": [
+        "CWE-400"
+      ]
+    }
+  ]
+}

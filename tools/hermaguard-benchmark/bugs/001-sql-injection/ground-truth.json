@@ -4,6 +4,6 @@
   "severity": "CRITICAL",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "f-string SQL query username interpolation", "description": "SQL injection via unparameterised query", "severity": "CRITICAL"}
+    {"file": "app.py", "trigger": "f-string SQL query username interpolation", "description": "SQL injection via unparameterised query", "severity": "CRITICAL", "classes": ["CWE-89"]}
   ]
 }

@@ -1,0 +1,12 @@
+--- a/app.py
++++ b/app.py
+ def parse(stream):
+     records = []
++    MAX = 10_000
+     while True:
+         line = stream.readline()
+         if not line:
+             break
++        if len(records) >= MAX:
++            raise ValueError("too many records")
+         records.append(json.loads(line))

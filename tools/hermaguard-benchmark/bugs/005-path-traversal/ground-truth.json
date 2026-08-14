@@ -1,9 +1,9 @@
 {
-  "title": "Path traversal in read_doc",
-  "description": "name is concatenated onto a base directory with no sanitisation; '../../etc/passwd' escapes the docs root.",
+  "title": "Path traversal in file download",
+  "description": "User-supplied filename is joined without validation; ../ sequences escape the intended directory.",
   "severity": "HIGH",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "unsanitised path concatenation traversal", "description": "arbitrary file read via ../ path traversal", "severity": "HIGH"}
+    {"file": "app.py", "trigger": "filename joined into path without traversal check", "description": "Arbitrary file read via ../ traversal", "severity": "HIGH", "classes": ["CWE-22"]}
   ]
 }

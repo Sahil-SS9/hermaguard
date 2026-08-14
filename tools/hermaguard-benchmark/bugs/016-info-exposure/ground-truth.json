@@ -1,0 +1,17 @@
+{
+  "title": "Stack trace returned to client",
+  "description": "Bare handler returns exception text in the HTTP response body.",
+  "severity": "MEDIUM",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "exception text returned in response body",
+      "description": "Internal paths, queries, and versions leaked to clients",
+      "severity": "MEDIUM",
+      "classes": [
+        "CWE-200"
+      ]
+    }
+  ]
+}

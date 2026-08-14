@@ -1,0 +1,11 @@
+--- a/app.py
++++ b/app.py
+ def withdraw(conn, user_id: int, amount: int):
+     row = conn.execute("SELECT balance FROM accounts WHERE id = ?", (user_id,)).fetchone()
+-    # single atomic guarded update
+-    cur = conn.execute("UPDATE accounts SET balance = balance - ? WHERE id = ? AND balance >= ?", (amount, user_id, amount))
+-    if cur.rowcount == 0:
+-        raise ValueError("insufficient funds")
+-    conn.commit()
+-    return
+     if row[0] < amount:

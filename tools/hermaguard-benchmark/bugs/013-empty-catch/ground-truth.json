@@ -1,0 +1,18 @@
+{
+  "title": "Swallowed exception in payment processing",
+  "description": "Bare except: pass hides every failure; function returns fake success.",
+  "severity": "HIGH",
+  "category": "error-handling",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "bare except pass, returns success regardless",
+      "description": "Fake success masks failed charges \u2014 silent data/money loss",
+      "severity": "HIGH",
+      "classes": [
+        "HG-DEGENERATE",
+        "CWE-754"
+      ]
+    }
+  ]
+}

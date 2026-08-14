@@ -1,0 +1,17 @@
+{
+  "title": "Hard-coded API key committed to source",
+  "description": "Live API key embedded in source; anyone with repo access can use the account.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "live API key assigned to module constant",
+      "description": "Credential theft and unauthorized charges from public repo",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-798"
+      ]
+    }
+  ]
+}

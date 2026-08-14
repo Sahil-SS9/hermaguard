@@ -1,0 +1,18 @@
+{
+  "title": "Unhandled promise rejection",
+  "description": "fetch promise has no catch; network failure leaves UI in loading state forever.",
+  "severity": "MEDIUM",
+  "category": "async",
+  "findings": [
+    {
+      "file": "app.js",
+      "trigger": "await fetch chain with no try/catch or .catch",
+      "description": "Unhandled rejection \u2014 loading state never resolves on failure",
+      "severity": "MEDIUM",
+      "classes": [
+        "HG-ASYNC",
+        "CWE-754"
+      ]
+    }
+  ]
+}

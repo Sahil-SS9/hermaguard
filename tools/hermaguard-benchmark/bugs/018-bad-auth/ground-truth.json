@@ -1,0 +1,18 @@
+{
+  "title": "Password comparison not constant-time",
+  "description": "Plain == on password-derived token allows timing side channel.",
+  "severity": "MEDIUM",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "secret compared with plain string equality",
+      "description": "Timing side channel leaks secret one byte at a time",
+      "severity": "MEDIUM",
+      "classes": [
+        "CWE-287",
+        "CWE-200"
+      ]
+    }
+  ]
+}

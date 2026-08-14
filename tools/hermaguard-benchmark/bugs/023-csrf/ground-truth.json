@@ -1,0 +1,17 @@
+{
+  "title": "State change on GET without CSRF token",
+  "description": "Password change honors GET with no token; img tags can trigger it.",
+  "severity": "HIGH",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "state change accepted on GET without CSRF token",
+      "description": "CSRF \u2014 attacker sites change victim emails via img/link",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-352"
+      ]
+    }
+  ]
+}

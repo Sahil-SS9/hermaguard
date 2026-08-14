@@ -4,6 +4,6 @@
   "severity": "MEDIUM",
   "category": "logic",
   "findings": [
-    {"file": "app.py", "trigger": "cursor fetchone row indexed without null check", "description": "TypeError crash when user_id not found", "severity": "MEDIUM"}
+    {"file": "app.py", "trigger": "cursor fetchone row indexed without null check", "description": "TypeError crash when user_id not found", "severity": "MEDIUM", "classes": ["CWE-476", "CWE-754"]}
   ]
 }

@@ -1,0 +1,6 @@
+--- a/app.py
++++ b/app.py
+ def change_email(request):
+-    if request.method == "POST" and request.form.get("csrf_token") == session_csrf():
++    if request.method in ("GET", "POST"):
+         u = db.get_user(request.args["user"])

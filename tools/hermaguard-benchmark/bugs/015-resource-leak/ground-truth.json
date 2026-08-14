@@ -1,0 +1,18 @@
+{
+  "title": "Unclosed file handle on error path",
+  "description": "open() without context manager; exception path leaks the descriptor.",
+  "severity": "MEDIUM",
+  "category": "resources",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "open without with/close on all paths",
+      "description": "FD leak under repeated failures exhausts process limit",
+      "severity": "MEDIUM",
+      "classes": [
+        "CWE-404",
+        "CWE-754"
+      ]
+    }
+  ]
+}

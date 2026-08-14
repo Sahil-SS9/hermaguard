@@ -1,0 +1,7 @@
+--- a/app.py
++++ b/app.py
+ def read_config(path):
+-    with open(path) as f:
+-        return json.load(f)
++    f = open(path)
+     data = json.load(f)

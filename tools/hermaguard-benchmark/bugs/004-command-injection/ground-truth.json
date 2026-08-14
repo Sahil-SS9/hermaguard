@@ -1,9 +1,9 @@
 {
-  "title": "Command injection in ping_host",
-  "description": "host is interpolated into a shell=True command string; a value like '8.8.8.8; rm -rf /' executes arbitrary commands.",
+  "title": "Shell command injection via ping utility",
+  "description": "User-supplied host is concatenated into a shell command; shell metacharacters execute arbitrary commands.",
   "severity": "CRITICAL",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "subprocess shell=True host interpolation command injection", "description": "arbitrary shell command execution via unsanitised host", "severity": "CRITICAL"}
+    {"file": "app.py", "trigger": "user host concatenated into shell command", "description": "OS command injection via shell=True with unescaped input", "severity": "CRITICAL", "classes": ["CWE-78"]}
   ]
 }

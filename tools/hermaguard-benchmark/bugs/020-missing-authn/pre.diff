@@ -1,0 +1,6 @@
+--- a/app.py
++++ b/app.py
+ def reset_password(request, user_id: int):
+-    if not request.session.get("user"):
+-        raise PermissionError("login required")
+     new_pw = request.json["password"]

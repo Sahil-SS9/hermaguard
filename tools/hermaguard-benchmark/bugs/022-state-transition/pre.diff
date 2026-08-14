@@ -1,0 +1,6 @@
+--- a/app.js
++++ b/app.js
+   } catch (e) {
+     state.error = e.message;
++    state.loading = false;
+   }

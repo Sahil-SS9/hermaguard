@@ -1,0 +1,17 @@
+{
+  "title": "Reflected XSS via innerHTML assignment",
+  "description": "Search term inserted into the DOM via innerHTML without escaping.",
+  "severity": "HIGH",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.js",
+      "trigger": "user input interpolated into innerHTML",
+      "description": "Script injection in victim browsers via crafted search term",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-79"
+      ]
+    }
+  ]
+}

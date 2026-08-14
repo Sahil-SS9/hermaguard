@@ -274,3 +274,81 @@ class TestGrader(unittest.TestCase):
         self.assertFalse(out["severity_grading"]["escalation_chain_detected"])
         by_id = {f["id"]: f for f in out["findings"]}
         self.assertEqual(by_id["B"]["L_level"], "L3")
+
+
+def _load_benchmark():
+    return _load_module("hermaguard_benchmark", "tools/hermaguard-benchmark/benchmark.py")
+
+
+class TestBenchmarkDeterministicScoring(unittest.TestCase):
+    """Class-based matching replaces fuzzy keyword overlap for new ground truth."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bm = _load_benchmark()
+        cls.bug = {
+            "id": "999-test", "title": "t", "severity": "HIGH", "category": "security",
+            "expected_findings": [
+                {"file": "app.py", "trigger": "x", "description": "x", "severity": "HIGH", "classes": ["CWE-89"]},
+            ],
+        }
+
+    def test_class_match_exact(self):
+        run = {"run_ok": True, "findings": [
+            {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89", "CWE-20"]},
+        ]}
+        s = self.bm.score_run(self.bug, run)
+        self.assertEqual(s["true_positives"], 1)
+        self.assertEqual(s["false_positives"], 0)
+        self.assertEqual(s["match_modes"]["class"], 1)
+
+    def test_class_match_requires_file_match(self):
+        run = {"run_ok": True, "findings": [
+            {"id": "HG-1", "file": "other.py", "severity": "HIGH", "classes": ["CWE-89"]},
+        ]}
+        s = self.bm.score_run(self.bug, run)
+        self.assertEqual(s["true_positives"], 0)
+        self.assertEqual(s["false_negatives"], 1)
+
+    def test_no_class_intersection_no_match(self):
+        run = {"run_ok": True, "findings": [
+            {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-22"]},
+        ]}
+        s = self.bm.score_run(self.bug, run)
+        self.assertEqual(s["true_positives"], 0)
+
+    def test_deterministic_identical_inputs(self):
+        run = {"run_ok": True, "findings": [
+            {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89"]},
+            {"id": "HG-2", "file": "app.py", "severity": "MEDIUM", "classes": ["CWE-22"]},
+        ]}
+        r1 = self.bm.score_run(self.bug, run)
+        r2 = self.bm.score_run(self.bug, run)
+        self.assertEqual(r1["matches"], r2["matches"])
+        self.assertEqual((r1["precision_pct"], r1["recall_pct"]), (r2["precision_pct"], r2["recall_pct"]))
+
+    def test_legacy_keyword_fallback_still_works(self):
+        bug_legacy = {
+            "id": "998-legacy", "title": "t", "severity": "HIGH", "category": "security",
+            "expected_findings": [
+                {"file": "app.py", "trigger": "sql injection unparameterised query", "description": "sqli", "severity": "CRITICAL"},
+            ],
+        }
+        run = {"run_ok": True, "findings": [
+            {"id": "HG-1", "file": "app.py", "severity": "CRITICAL",
+             "trigger_condition": "sql injection unparameterised query", "consequence": "data breach"},
+        ]}
+        s = self.bm.score_run(bug_legacy, run)
+        self.assertEqual(s["true_positives"], 1)
+        self.assertEqual(s["match_modes"]["keyword"], 1)
+
+    def test_corpus_integrity(self):
+        import pathlib
+        bugs_dir = pathlib.Path("tools/hermaguard-benchmark/bugs")
+        dirs = sorted([p for p in bugs_dir.iterdir() if p.is_dir()])
+        self.assertEqual(len(dirs), 25, f"expected 25 bugs, found {len(dirs)}")
+        for d in dirs:
+            gt = json.loads((d / "ground-truth.json").read_text())
+            self.assertTrue(gt["findings"], f"{d.name}: no findings in ground truth")
+            for f in gt["findings"]:
+                self.assertIn("classes", f, f"{d.name}: ground truth missing classes")

@@ -1,0 +1,18 @@
+{
+  "title": "Pickle load of user-supplied bytes",
+  "description": "pickle.loads on request body executes arbitrary code during deserialisation.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "pickle.loads on untrusted request bytes",
+      "description": "RCE \u2014 pickle deserialisation executes attacker code",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-502",
+        "CWE-94"
+      ]
+    }
+  ]
+}

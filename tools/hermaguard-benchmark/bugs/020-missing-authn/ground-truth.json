@@ -1,0 +1,18 @@
+{
+  "title": "State-changing route without authentication",
+  "description": "POST handler has no session check; anonymous requests reset any account.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "state-changing handler without session/auth check",
+      "description": "Account takeover by anonymous callers",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-306",
+        "CWE-287"
+      ]
+    }
+  ]
+}

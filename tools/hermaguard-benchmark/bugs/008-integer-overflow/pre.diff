@@ -1,0 +1,6 @@
+--- a/app.py
++++ b/app.py
+ def order_total(price_cents: int, quantity: int) -> int:
+-    if quantity > 10_000:
+-        raise ValueError("quantity too large")
+     # no upper bound on quantity

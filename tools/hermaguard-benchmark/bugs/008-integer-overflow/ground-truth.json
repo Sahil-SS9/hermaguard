@@ -1,0 +1,18 @@
+{
+  "title": "Unvalidated quantity causes integer overflow",
+  "description": "quantity from request body multiplies price without bounds; extreme values overflow.",
+  "severity": "MEDIUM",
+  "category": "logic",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "quantity multiplied without upper-bound check",
+      "description": "Overflow/wraparound corrupts totals on extreme input",
+      "severity": "MEDIUM",
+      "classes": [
+        "CWE-190",
+        "CWE-20"
+      ]
+    }
+  ]
+}

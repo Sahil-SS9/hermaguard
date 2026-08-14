@@ -1,9 +1,9 @@
 {
-  "title": "Unsafe YAML deserialisation in load_config",
-  "description": "yaml.load() without a safe loader permits arbitrary object construction and code execution via crafted YAML.",
-  "severity": "HIGH",
+  "title": "Unsafe YAML deserialisation",
+  "description": "yaml.load() without SafeLoader allows arbitrary object construction — RCE via crafted YAML.",
+  "severity": "CRITICAL",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "yaml.load unsafe deserialization", "description": "arbitrary code execution via unsafe yaml.load", "severity": "HIGH"}
+    {"file": "app.py", "trigger": "yaml.load without SafeLoader", "description": "Arbitrary code execution via unsafe deserialisation", "severity": "CRITICAL", "classes": ["CWE-502"]}
   ]
 }

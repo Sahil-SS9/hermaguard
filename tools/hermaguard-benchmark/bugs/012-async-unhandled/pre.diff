@@ -1,0 +1,11 @@
+--- a/app.js
++++ b/app.js
+ async function loadProfile(userId) {
+-  try {
+     const res = await fetch(`/api/users/${userId}`);
+     const data = await res.json();
+     return data;
+-  } catch (e) {
+-    showError(e);
+-  }
+ }

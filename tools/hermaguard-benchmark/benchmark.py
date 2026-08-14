@@ -67,17 +67,66 @@ def load_bug(bug_dir: str) -> dict:
     }
 
 
+def _file_matches(exp_file: str, found_file: str) -> bool:
+    """Deterministic file match on basename. Empty either side = pass-through."""
+    if not exp_file or not found_file:
+        return True
+    return os.path.basename(exp_file) == os.path.basename(found_file)
+
+
+def _class_matches(exp: dict, fnd: dict) -> bool:
+    """Deterministic class match: both sides carry `classes` and they intersect."""
+    exp_classes = exp.get("classes") or []
+    fnd_classes = fnd.get("classes") or []
+    if not exp_classes or not fnd_classes:
+        return False  # not class-matchable — caller falls back to keywords
+    return bool(set(exp_classes) & set(fnd_classes))
+
+
 def score_run(bug: dict, run_info: dict) -> dict:
-    """Score a run against ground truth."""
+    """Score a run against ground truth.
+
+    Matching is two-tier and deterministic:
+      Tier 1 (preferred): class-based — ground truth entries carry `classes`
+      (CWE/HG ids) and findings carry `classes`; a match requires a non-empty
+      class intersection AND a basename file match. No thresholds, no fuzzy
+      scores. Identical inputs always produce identical results.
+      Tier 2 (legacy fallback): keyword overlap for old results that predate
+      the classes field. Threshold fixed at 0.3, severity boost 1.3 — kept ONLY
+      for backward compatibility; new ground truth must carry classes.
+    """
     expected = bug.get("expected_findings", [])
     found = run_info.get("findings", [])
 
-    # Match findings to ground truth by: (a) file proximity, (b) keyword overlap
     matched_expected = set()
     matched_found = set()
     matches = []
+    match_modes = {"class": 0, "keyword": 0}
 
     for i, exp in enumerate(expected):
+        # ---- Tier 1: deterministic class match ----
+        if exp.get("classes"):
+            for j, fnd in enumerate(found):
+                if j in matched_found:
+                    continue
+                if _class_matches(exp, fnd) and _file_matches(exp.get("file", ""), fnd.get("file", "")):
+                    matched_expected.add(i)
+                    matched_found.add(j)
+                    match_modes["class"] += 1
+                    matches.append({
+                        "expected_id": f"EXP-{i+1}",
+                        "found_id": fnd.get("id", f"HG-{j+1}"),
+                        "mode": "class",
+                        "matched_classes": sorted(set(exp["classes"]) & set(fnd.get("classes") or [])),
+                        "expected_severity": exp.get("severity", "?"),
+                        "found_severity": fnd.get("severity", "?"),
+                        "expected_file": exp.get("file", "?"),
+                        "found_file": fnd.get("file", "?"),
+                    })
+                    break
+            continue  # class-carrying entries never fall through to keywords
+
+        # ---- Tier 2: legacy keyword fallback ----
         exp_text = f"{exp.get('file','')} {exp.get('trigger','')} {exp.get('description','')}".lower()
         best_score = 0
         best_j = -1
@@ -106,9 +155,11 @@ def score_run(bug: dict, run_info: dict) -> dict:
             matched_expected.add(i)
             matched_found.add(best_j)
             matched_fnd = found[best_j]
+            match_modes["keyword"] += 1
             matches.append({
                 "expected_id": f"EXP-{i+1}",
                 "found_id": matched_fnd.get("id", f"HG-{best_j+1}"),
+                "mode": "keyword",
                 "score": round(best_score, 2),
                 "expected_severity": exp.get("severity", "?"),
                 "found_severity": matched_fnd.get("severity", "?"),
@@ -148,6 +199,7 @@ def score_run(bug: dict, run_info: dict) -> dict:
         "f1_score": f1,
         "severity_accuracy_pct": severity_accuracy,
         "matches": matches,
+        "match_modes": match_modes,
         "run_ok": run_info["run_ok"],
         "run_error": run_info.get("error"),
     }

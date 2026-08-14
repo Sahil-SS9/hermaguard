@@ -1,0 +1,17 @@
+{
+  "title": "TOCTOU race on balance check",
+  "description": "Check-then-deduct without lock or atomic update; concurrent requests double-spend.",
+  "severity": "HIGH",
+  "category": "concurrency",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "balance check and deduct are separate non-atomic statements",
+      "description": "Double-spend under concurrent requests",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-362"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "title": "Admin endpoint without authorization check",
+  "description": "delete_user performs no permission check; any authenticated user can delete anyone.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "admin action without role/permission check",
+      "description": "Privilege escalation \u2014 any user deletes any account",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-862",
+        "CWE-269"
+      ]
+    }
+  ]
+}

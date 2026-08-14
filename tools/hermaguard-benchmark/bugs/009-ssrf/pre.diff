@@ -1,0 +1,8 @@
+--- a/app.py
++++ b/app.py
+ import requests
+ 
+ def send_webhook(url: str, payload: dict):
+-    if not url.startswith("https://hooks.example.com/"):
+-        raise ValueError("webhook host not allowed")
+     # user-supplied URL fetched without validation

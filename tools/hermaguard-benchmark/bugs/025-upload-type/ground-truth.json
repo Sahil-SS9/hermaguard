@@ -1,0 +1,18 @@
+{
+  "title": "Unrestricted upload accepts any type",
+  "description": "Upload saves whatever the client sends under the original extension.",
+  "severity": "HIGH",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "upload saved without extension/content-type validation",
+      "description": "Webshell upload via .php/.jsp under web root",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-434",
+        "CWE-22"
+      ]
+    }
+  ]
+}

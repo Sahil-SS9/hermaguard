@@ -1,0 +1,18 @@
+{
+  "title": "SSRF via user-controlled webhook URL",
+  "description": "Webhook URL comes from the request and is fetched server-side without allowlist.",
+  "severity": "HIGH",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "user-supplied URL fetched server-side without allowlist",
+      "description": "SSRF \u2014 internal network probing and metadata endpoint access",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-918",
+        "CWE-20"
+      ]
+    }
+  ]
+}

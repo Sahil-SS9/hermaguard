@@ -1,0 +1,9 @@
+--- a/app.py
++++ b/app.py
+ import os
+ 
+ def save_upload(file_storage):
+-    ext = os.path.splitext(file_storage.filename)[1].lower()
+-    if ext not in (".png", ".jpg", ".pdf"):
+-        raise ValueError("file type not allowed")
+     dest = os.path.join("/srv/uploads", file_storage.filename)

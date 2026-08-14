@@ -1,0 +1,17 @@
+{
+  "title": "eval on template expression",
+  "description": "Template renderer evals user-supplied filter expressions.",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "eval on user-controlled expression string",
+      "description": "Arbitrary code execution via crafted filter",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-94"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "title": "Non-atomic multi-step update",
+  "description": "Two-table update without transaction; crash between statements corrupts state.",
+  "severity": "HIGH",
+  "category": "data-integrity",
+  "findings": [
+    {
+      "file": "app.py",
+      "trigger": "two dependent updates without a wrapping transaction",
+      "description": "Crash mid-sequence loses money \u2014 debit without credit",
+      "severity": "HIGH",
+      "classes": [
+        "HG-PARTIAL-WRITE",
+        "CWE-362"
+      ]
+    }
+  ]
+}

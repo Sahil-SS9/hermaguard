@@ -1,0 +1,18 @@
+{
+  "title": "Missing loading\u2192error UI transition",
+  "description": "Error path updates message but never clears the loading flag.",
+  "severity": "MEDIUM",
+  "category": "logic",
+  "findings": [
+    {
+      "file": "app.js",
+      "trigger": "catch path never resets loading flag",
+      "description": "Spinner stuck forever after a failed refresh",
+      "severity": "MEDIUM",
+      "classes": [
+        "HG-STATE",
+        "HG-ASYNC"
+      ]
+    }
+  ]
+}

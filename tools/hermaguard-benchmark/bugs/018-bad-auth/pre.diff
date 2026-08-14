@@ -1,0 +1,10 @@
+--- a/app.py
++++ b/app.py
+ import hashlib
++import hmac
+ 
+ def verify(shared_secret: str, provided: str) -> bool:
+     a = hashlib.sha256(shared_secret.encode()).hexdigest()
+     b = hashlib.sha256(provided.encode()).hexdigest()
+-    return hmac.compare_digest(a, b)
++    return a == b

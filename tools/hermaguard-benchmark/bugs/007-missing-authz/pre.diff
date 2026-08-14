@@ -1,0 +1,6 @@
+--- a/app.py
++++ b/app.py
+ def delete_user(session_user, target_id: int):
+-    if session_user.get("role") != "admin":
+-        raise PermissionError("admin only")
+     # authn done upstream, but no role check

@@ -1,0 +1,4 @@
+--- a/app.js
++++ b/app.js
+@@ -0,0 +1 @@
++ (new file — the bug is introduced by this change)

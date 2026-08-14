@@ -1,0 +1,17 @@
+{
+  "title": "Loose equality on status check",
+  "description": "JS == with string/number mix accepts wrong status values.",
+  "severity": "LOW",
+  "category": "logic",
+  "findings": [
+    {
+      "file": "app.js",
+      "trigger": "loose == between string and number",
+      "description": "Wrong-type status grants edit rights unexpectedly",
+      "severity": "LOW",
+      "classes": [
+        "CWE-20"
+      ]
+    }
+  ]
+}
