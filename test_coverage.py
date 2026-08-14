@@ -22,6 +22,7 @@ def _load_module(name, relpath):
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load {relpath}")
     mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod  # required for dataclasses with from __future__ annotations
     spec.loader.exec_module(mod)
     return mod
 
@@ -213,3 +214,63 @@ class TestCLI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _load_grader():
+    return _load_module("hermaguard_grader", "tools/hermaguard-grader/hermaguard_grader.py")
+
+
+class TestGrader(unittest.TestCase):
+    """L0-L6 grader — real oracle behaviour, not just self-test passthrough."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.g = _load_grader()
+
+    def test_self_test_corpus_passes(self):
+        rc = self.g.self_test()
+        self.assertEqual(rc, 0)
+
+    def test_privilege_axis_gives_l5(self):
+        f = self.g.grade_finding({"id": "X", "severity": "HIGH",
+                                  "harm_axes": {"completed": True, "reversible": False,
+                                                "cross_scope": False, "privilege": True}})
+        self.assertEqual(f["L_level"], "L5")
+
+    def test_severity_fallback_never_undergrades(self):
+        for tier, floor in self.g.SEVERITY_FALLBACK_FLOOR.items():
+            f = self.g.grade_finding({"id": "X", "severity": tier})
+            self.assertGreaterEqual(self.g._LEVEL_RANK[f["L_level"]],
+                                    self.g._LEVEL_RANK[floor], msg=tier)
+            self.assertEqual(f["grading_method"], "severity-fallback")
+
+    def test_grading_is_additive(self):
+        original = {"id": "X", "severity": "LOW", "keep": "me"}
+        f = self.g.grade_finding(dict(original))
+        self.assertEqual(f["keep"], "me")
+        for k in original:
+            self.assertIn(k, f)
+
+    def test_escalation_chain_raises_peak_to_l6(self):
+        report = {"findings": [
+            {"id": "A", "severity": "HIGH", "harm_axes": {"completed": True, "reversible": True,
+                                                          "cross_scope": True, "privilege": False}},   # L4
+            {"id": "B", "severity": "CRITICAL", "harm_axes": {"completed": True, "reversible": False,
+                                                              "cross_scope": False, "privilege": True}},  # L5
+        ]}
+        out = self.g.grade_report(report)
+        by_id = {f["id"]: f for f in out["findings"]}
+        self.assertEqual(by_id["B"]["L_level"], "L6")
+        self.assertTrue(out["severity_grading"]["escalation_chain_detected"])
+
+    def test_local_chain_not_raised(self):
+        report = {"findings": [
+            {"id": "A", "severity": "MEDIUM", "harm_axes": {"completed": True, "reversible": True,
+                                                            "cross_scope": False, "privilege": False}},  # L2
+            {"id": "B", "severity": "HIGH", "harm_axes": {"completed": True, "reversible": False,
+                                                          "cross_scope": False, "privilege": False}},  # L3
+        ]}
+        out = self.g.grade_report(report)
+        self.assertFalse(out["severity_grading"]["escalation_chain_detected"])
+        by_id = {f["id"]: f for f in out["findings"]}
+        self.assertEqual(by_id["B"]["L_level"], "L3")

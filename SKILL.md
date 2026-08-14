@@ -365,6 +365,27 @@ After all 3 subagents return, merge their findings:
 
 6. **Generate the report**
 
+7. **Auto-severity grading (L0–L6).** After the JSON report is written, run the
+   deterministic grader to attach an action-graded `L_level` to every finding.
+   This step is **ADDITIVE** — it never mutates existing fields, only adds
+   `L_level` / `harm_axes` / `L_definition` / `grading_method` to each finding
+   plus a top-level `severity_grading` summary block. Run:
+
+   ```bash
+   python3 tools/hermaguard-grader/hermaguard_grader.py \
+     --report /tmp/hermaguard/hermaguard-{timestamp}-{hash}.json
+   # writes ….graded.json: each finding gains L_level; report gains severity_grading
+   ```
+
+   The grader implements the L0–L6 taxonomy (arXiv:2607.07474, Table I +
+   Appendix A). For a precise grade, each finding should carry a `harm_axes`
+   object during triage: `{completed, reversible, cross_scope, privilege,
+   escalation, attempted}` (boolean). If a finding lacks `harm_axes`, the grader
+   falls back to a conservative risk-tier floor — CRITICAL→≥L4, HIGH→≥L3,
+   MEDIUM/LOW→≥L2 — and sets `grading_method: severity-fallback` so the gap is
+   visible. **`L_level` (harm potential) and `severity` (operational urgency)
+   answer different questions and are both reported — never conflated.**
+
 ---
 
 ### Phase 3: Report
