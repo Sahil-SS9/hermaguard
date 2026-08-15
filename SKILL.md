@@ -261,6 +261,37 @@ Context: Entire file — you need to understand what the change sits within. Pre
 3. Impact — what breaks and how badly? (data loss > outage > degraded UX)
 4. Recommendation — specific fix with code reference
 
+**Verification bar (the evidence rule):** a finding's confidence is only as
+good as its evidence. When the bug class admits a runnable PoC (crash,
+double-spend, injection echo, wrong output), WRITE the PoC and RUN it:
+
+```bash
+python3 tools/hermaguard-verify/hermaguard-verify.py \
+  --poc /tmp/hermaguard/poc-hg001.py --target src/app.py \
+  --expect-fail --expect-output 'TypeError' \
+  --finding '{"id":"HG-001","classes":["CWE-476"]}' \
+  --json /tmp/hermaguard/verify-hg001.json
+```
+
+The verdict (VERIFIED / REFUTED / UNVERIFIED) comes from EXECUTION EVIDENCE —
+subprocess exit code and output — never from model self-report. Attach the
+verdict to the finding as `verification: {verdict, signal, exit_code}`.
+A REFUTED finding is a false positive caught before it wasted the author's
+time — drop it or downgrade it to an honest note. An UNVERIFIED finding is
+labelled as such in the report; never present it as confirmed.
+
+**Forced verification (hard classes):** findings in CWE-362 (races), HG-ASYNC,
+HG-PARTIAL-WRITE, and CWE-416 are where reviewer judgement is empirically
+weakest — timing, interleaving, and lifetime effects can't be eyeballed.
+Before shipping the report, run:
+
+```bash
+python3 tools/hermaguard-verify/hermaguard-verify.py --check-report report.json
+```
+
+Exit 1 = a hard-class finding lacks VERIFIED evidence. Fix it or downgrade the
+claim — the gate is non-negotiable.
+
 **Scope exclusions — DO NOT comment on:**
 - Code style, formatting, naming conventions
 - "Nice to have" improvements unrelated to correctness or safety
