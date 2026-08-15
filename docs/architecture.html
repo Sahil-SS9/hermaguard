@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermaguard — Review Pipeline Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Hermaguard — Review Pipeline</h1>
+      </div>
+      <p class="subtitle">One review run: code &rarr; deterministic pre-passes &rarr; three adversarial agents &rarr; trust gates &rarr; verified report &rarr; learning loop</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 1120">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== INPUT ===== -->
+        <rect x="380" y="40" width="240" height="54" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="500" y="62" fill="white" font-size="12" font-weight="600" text-anchor="middle">Input: code / diff</text>
+        <text x="500" y="80" fill="#94a3b8" font-size="9" text-anchor="middle">the files under review</text>
+
+        <!-- ===== PHASE 0 ===== -->
+        <rect x="30" y="120" width="940" height="330" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="42" y="138" fill="#fbbf24" font-size="10" font-weight="600">PHASE 0 — Deterministic pre-passes (auditable, never lie)</text>
+
+        <rect x="60" y="150" width="200" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="160" y="172" fill="white" font-size="11" font-weight="600" text-anchor="middle">Scope Detection</text>
+        <text x="160" y="190" fill="#94a3b8" font-size="9" text-anchor="middle">what changed, how big</text>
+
+        <rect x="60" y="230" width="200" height="80" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="160" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">Coverage Ledger</text>
+        <text x="160" y="268" fill="#94a3b8" font-size="9" text-anchor="middle">32 bug classes</text>
+        <text x="160" y="282" fill="#94a3b8" font-size="9" text-anchor="middle">(CWE Top-25 + races/async&hellip;)</text>
+        <text x="160" y="298" fill="#fbbf24" font-size="8" text-anchor="middle">report must account for all</text>
+
+        <rect x="300" y="150" width="200" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="400" y="172" fill="white" font-size="11" font-weight="600" text-anchor="middle">Locate (SHERLOC)</text>
+        <text x="400" y="190" fill="#94a3b8" font-size="9" text-anchor="middle">ranks where bugs likely hide</text>
+
+        <rect x="300" y="230" width="200" height="80" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="400" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">Sanitize (CodeSentinel)</text>
+        <text x="400" y="268" fill="#94a3b8" font-size="9" text-anchor="middle">strips hidden instructions</text>
+        <text x="400" y="282" fill="#94a3b8" font-size="9" text-anchor="middle">from comments/strings</text>
+        <text x="400" y="298" fill="#fbbf24" font-size="8" text-anchor="middle">anti prompt-injection</text>
+
+        <rect x="540" y="150" width="210" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="645" y="172" fill="white" font-size="11" font-weight="600" text-anchor="middle">Prescan (bandit/ruff/&hellip;)</text>
+        <text x="645" y="190" fill="#94a3b8" font-size="9" text-anchor="middle">real SAST tools, deterministic</text>
+
+        <rect x="540" y="230" width="210" height="80" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="645" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">Role Patterns (CLAWAUDIT)</text>
+        <text x="645" y="268" fill="#94a3b8" font-size="9" text-anchor="middle">agent-specific SAST rules</text>
+        <text x="645" y="282" fill="#94a3b8" font-size="9" text-anchor="middle">generic tools miss ~80%</text>
+
+        <rect x="790" y="150" width="150" height="160" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="865" y="172" fill="white" font-size="11" font-weight="600" text-anchor="middle">Suppression</text>
+        <text x="865" y="188" fill="white" font-size="11" font-weight="600" text-anchor="middle">Rules</text>
+        <text x="865" y="206" fill="#94a3b8" font-size="9" text-anchor="middle">learned from past</text>
+        <text x="865" y="220" fill="#94a3b8" font-size="9" text-anchor="middle">false positives</text>
+        <text x="865" y="240" fill="#fb7185" font-size="8" text-anchor="middle">applied by prescan</text>
+        <text x="865" y="254" fill="#fb7185" font-size="8" text-anchor="middle">+ role patterns</text>
+
+        <!-- Arrows -->
+        <line x1="500" y1="94" x2="500" y2="118" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="160" y1="310" x2="480" y2="455" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="310" x2="495" y2="455" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="645" y1="310" x2="520" y2="455" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="865" y1="310" x2="540" y2="455" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,4" marker-end="url(#arrowhead)"/>
+
+        <!-- ===== PHASE 1 ===== -->
+        <rect x="30" y="470" width="940" height="200" rx="12" fill="rgba(6, 78, 59, 0.08)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="42" y="488" fill="#34d399" font-size="10" font-weight="600">PHASE 1 — Three adversarial agents (sanitized code + locate hints + prescan findings as input)</text>
+
+        <rect x="60" y="500" width="280" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="200" y="524" fill="white" font-size="11" font-weight="600" text-anchor="middle">Agent 1 — Edge Case Hunter</text>
+        <text x="200" y="542" fill="#94a3b8" font-size="9" text-anchor="middle">nulls, races, async, partial writes</text>
+        <text x="200" y="560" fill="#94a3b8" font-size="9" text-anchor="middle">forced PoC for hard classes</text>
+
+        <rect x="370" y="500" width="280" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="510" y="524" fill="white" font-size="11" font-weight="600" text-anchor="middle">Agent 2 — Adversarial Reviewer</text>
+        <text x="510" y="542" fill="#94a3b8" font-size="9" text-anchor="middle">injection, auth, deserialization</text>
+        <text x="510" y="560" fill="#94a3b8" font-size="9" text-anchor="middle">attacks from locate hypotheses</text>
+
+        <rect x="680" y="500" width="260" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="810" y="524" fill="white" font-size="11" font-weight="600" text-anchor="middle">Agent 3 — Blast Radius</text>
+        <text x="810" y="542" fill="#94a3b8" font-size="9" text-anchor="middle">config, callers, migrations</text>
+        <text x="810" y="560" fill="#94a3b8" font-size="9" text-anchor="middle">what else breaks</text>
+
+        <text x="500" y="628" fill="#94a3b8" font-size="9" text-anchor="middle">every finding: what / why / impact / fix + bug-class ids + proof-of-concept</text>
+
+        <!-- ===== PHASE 2 ===== -->
+        <line x1="500" y1="670" x2="500" y2="700" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <rect x="330" y="705" width="340" height="60" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="500" y="727" fill="white" font-size="12" font-weight="600" text-anchor="middle">Consolidator</text>
+        <text x="500" y="745" fill="#94a3b8" font-size="9" text-anchor="middle">dedup, merge, build coverage array</text>
+
+        <!-- ===== GATES ===== -->
+        <rect x="30" y="800" width="940" height="185" rx="12" fill="rgba(136, 19, 55, 0.06)" stroke="#fb7185" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="42" y="818" fill="#fb7185" font-size="10" font-weight="600">TRUST GATES — the report cannot ship without passing these</text>
+
+        <rect x="60" y="830" width="280" height="70" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="200" y="852" fill="white" font-size="11" font-weight="600" text-anchor="middle">1. Coverage Check</text>
+        <text x="200" y="870" fill="#94a3b8" font-size="9" text-anchor="middle">every applicable bug class</text>
+        <text x="200" y="884" fill="#94a3b8" font-size="9" text-anchor="middle">accounted: finding / clean / N-A</text>
+
+        <rect x="370" y="830" width="280" height="70" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="510" y="852" fill="white" font-size="11" font-weight="600" text-anchor="middle">2. Verify PoCs (hard classes)</text>
+        <text x="510" y="870" fill="#94a3b8" font-size="9" text-anchor="middle">races / async must carry</text>
+        <text x="510" y="884" fill="#94a3b8" font-size="9" text-anchor="middle">VERIFIED execution evidence</text>
+
+        <rect x="680" y="830" width="260" height="70" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="810" y="852" fill="white" font-size="11" font-weight="600" text-anchor="middle">3. Grader (L0&ndash;L6)</text>
+        <text x="810" y="870" fill="#94a3b8" font-size="9" text-anchor="middle">deterministic severity tier</text>
+        <text x="810" y="884" fill="#94a3b8" font-size="9" text-anchor="middle">per finding, no guessing</text>
+
+        <!-- ===== OUTPUT ===== -->
+        <line x1="500" y1="985" x2="500" y2="1005" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <rect x="330" y="1010" width="340" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="500" y="1032" fill="white" font-size="12" font-weight="600" text-anchor="middle">Report (HTML + JSON)</text>
+        <text x="500" y="1050" fill="#94a3b8" font-size="9" text-anchor="middle">findings, coverage, verdict, evidence</text>
+
+        <!-- ===== LEARNING LOOP ===== -->
+        <path d="M 865 1040 L 950 1040 L 950 240" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+        <text x="958" y="630" fill="#fb7185" font-size="8" transform="rotate(90 958 630)">feedback: dismiss 3x &rarr; rule &rarr; suppressed forever</text>
+
+        <!-- ===== LEGEND ===== -->
+        <text x="60" y="1095" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="140" y="1085" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="162" y="1093" fill="#94a3b8" font-size="8">Deterministic tools</text>
+        <rect x="290" y="1085" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="312" y="1093" fill="#94a3b8" font-size="8">LLM agents</text>
+        <rect x="420" y="1085" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="442" y="1093" fill="#94a3b8" font-size="8">Gates / learning</text>
+        <rect x="560" y="1085" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="582" y="1093" fill="#94a3b8" font-size="8">Merge</text>
+        <rect x="660" y="1085" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="682" y="1093" fill="#94a3b8" font-size="8">Output</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Accountability</h3>
+        </div>
+        <ul>
+          <li>&bull; 32 bug classes tracked per report</li>
+          <li>&bull; every class: finding, clean, or N-A-with-reason</li>
+          <li>&bull; gaps fail the coverage check — no silent skips</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Evidence</h3>
+        </div>
+        <ul>
+          <li>&bull; PoCs run in a hardened sandbox (rlimits, empty env)</li>
+          <li>&bull; verdicts from execution output, not model claims</li>
+          <li>&bull; races / async bugs require VERIFIED proof</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Learning</h3>
+        </div>
+        <ul>
+          <li>&bull; dismiss a false positive 3&times; &rarr; suppression rule</li>
+          <li>&bull; prescan applies rules on every future run</li>
+          <li>&bull; suppression visible in stats, never silent</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">Hermaguard &bull; docs/architecture.html &bull; generated architecture reference</p>
+  </div>
+</body>
+</html>

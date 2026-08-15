@@ -33,6 +33,20 @@ Adversarial bug-hunting code review for AI agents. Deterministic pre-scan + 3 pa
                      └──────────────┘
 ```
 
+## What's new in v2.1.0
+
+v2.1 adds the **accountability layer** — the review can no longer claim things without proving them:
+
+- **Coverage checklist:** every report accounts for all 32 bug classes (MITRE 2024 CWE Top 25 + races, async gaps, partial writes). Each class gets exactly one status — finding, clean, or N/A-with-reason. Gaps fail the check.
+- **Verified findings:** agents write a proof-of-concept; `hermaguard-verify` runs it in a hardened sandbox (empty env, rlimits, kill-on-timeout) and verdicts VERIFIED / REFUTED / UNVERIFIED from execution output — never model self-report. Hard classes (races, async, partial writes) cannot ship without VERIFIED evidence.
+- **Regression gate:** benchmark corpus grown 5 → 25 bugs covering every claimed class. Scoring is deterministic class-matching — no keyword fuzz, no gamed scores.
+- **L0–L6 harm grader:** deterministic action-graded severity per finding (taxonomy from arXiv:2607.07474).
+- **Closed learning loop:** dismiss a false positive 3× → compiled suppression rule → prescan applies it on every future run. Suppression is always visible in stats.
+- **Research pre-passes:** locate (SHERLOC-style fault localization, arXiv:2606.24820), role-patterns (agent-specific SAST rules, CLAWAUDIT lesson), sanitize (CodeSentinel-style prompt-injection defense, arXiv:2606.19235).
+- **CI on itself, pip packaging** with 9 console scripts, and 130 tests across 7 suites.
+
+See [docs/architecture.html](docs/architecture.html) for the full pipeline diagram, and [CHANGELOG.md](CHANGELOG.md) for details.
+
 ## What's new in v2.0.0
 
 - **Deterministic pre-scan layer:** Runs semgrep, bandit, eslint, gosec, and ruff on your diff BEFORE the LLM agents. Catches SQL injection, unsafe deserialisation, hardcoded secrets, and other patterns that language scanners find. Agents then investigate exploitability instead of guessing from scratch.
@@ -57,25 +71,27 @@ Adversarial bug-hunting code review for AI agents. Deterministic pre-scan + 3 pa
 hermaguard/
 ├── SKILL.md                          # The skill (Hermes/Claude/Codex/any harness)
 ├── README.md                         # This file
+├── CHANGELOG.md                      # Release history
 ├── LICENSE                           # MIT
+├── pyproject.toml                    # pip install . → 9 console scripts
+├── docs/
+│   └── architecture.html             # Pipeline architecture diagram
 ├── test_tools.py                     # 130 tests across 7 suites, all calling real code
 ├── tools/
-│   ├── hermaguard-prescan/           # Deterministic pre-scan CLI
-│   │   └── hermaguard-prescan.py
-│   ├── hermaguard-benchmark/         # Score-only benchmark
-│   │   ├── benchmark.py
-│   │   ├── bugs/                     # Seeded corpus (ground truth, no answer-key comments)
-│   │   └── results/                  # Per-bug JSON + HTML report (gitignored html)
+│   ├── hermaguard-prescan/           # Deterministic pre-scan CLI (+ suppression rules)
+│   ├── hermaguard-coverage/          # Coverage checklist (32 bug classes)
+│   ├── hermaguard-verify/            # PoC sandbox runner (VERIFIED/REFUTED/UNVERIFIED)
+│   ├── hermaguard-locate/            # SHERLOC-style fault localization
+│   ├── hermaguard-role-patterns/     # Agent-specific SAST rules
+│   ├── hermaguard-sanitize/          # Prompt-injection sanitizer
+│   ├── hermaguard-grader/            # L0–L6 harm grader
+│   ├── hermaguard-benchmark/         # Score-only benchmark (25-bug corpus)
 │   ├── hermaguard-compile-rules/     # TRACE-style rule compiler
-│   │   └── hermaguard-compile-rules.py
 │   └── agentsmd-linter/              # Instruction file scorer
-│       └── agentsmd-lint.py
 ├── integrations/
 │   └── github-action/                # GitHub Action (pre-scan in CI)
-│       └── action.yml
 ├── mcp/
 │   └── hermaguard-feedback/          # Feedback MCP server
-│       └── server.py
 └── data/                             # Runtime data (gitignored)
 ```
 
