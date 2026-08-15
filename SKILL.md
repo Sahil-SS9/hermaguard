@@ -11,7 +11,7 @@ category: software-development
 
 A read-only adversarial review skill that hunts bugs, edge cases, and integration risks in code changes. A deterministic pre-scan runs static analysis tools first (semgrep, bandit, eslint, etc.), then 3 parallel subagents attack the code from different angles using the pre-scan findings as context. A consolidator merges and triages everything into a structured report.
 
-**This skill does NOT apply fixes.** It finds problems. Octacon or the feature pipeline picks up findings as separate tasks.
+**This skill does NOT apply fixes.** It finds problems. A coding agent or your feature pipeline picks up findings as separate tasks.
 
 Synthesised from 8 implementations (Trail of Bits `differential-review`, BMAD `edge-case-hunter`/`adversarial-general`/`bmad-code-review`, dementev-dev `adversarial-review`, Anthropic `claude-code-security-review` + Code Review Plugin, and the community adversarial-prompt pattern). Schemas and project config: `references/output-schema.md`.
 
@@ -63,7 +63,7 @@ The `/hermaguard` command is **opt-in only** — no auto-trigger on commits. Sah
 
 **Chained workflow:**
 ```
-Implement → Verify (tests pass) → Simplify → Hermaguard → Fix (Octacon) → Simplify → Commit
+Implement → Verify (tests pass) → Simplify → Hermaguard → Fix (coding agent) → Simplify → Commit
 ```
 
 ## Architecture: Pre-Scan + 3 Agents + Consolidator
@@ -528,7 +528,7 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 - [ ] Address MEDIUM findings next sprint
 - [ ] LOW findings — backlog or dismiss
 
-**No fixes were applied by this review.** Findings to be picked up by Octacon as separate tasks.
+**No fixes were applied by this review.** Findings to be picked up by a coding agent as separate tasks.
 ```
 
 **JSON output schema:** six top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason — the accountability ledger), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
@@ -537,10 +537,10 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 
 ## Integration Points
 
-### With Octacon (Coding Lead)
-Octacon reads the Hermaguard report after any implementation task. Flow:
+### With a Coding Agent
+A coding agent reads the Hermaguard report after any implementation task. Flow:
 ```
-Octacon implements → Simplify → Hermaguard → Octacon fixes → Simplify → Commit
+coding agent implements → Simplify → Hermaguard → coding agent fixes → Simplify → Commit
 ```
 
 ### With the Feature Pipeline
@@ -566,7 +566,7 @@ If the `hermaguard-feedback` MCP server is available, record findings and query 
   false positive 3× and a suppression rule is created automatically.
 
 ### With Knowledge Graph MCP Server
-If the `kensei-kg` MCP server is available, query before review:
+If a knowledge-graph MCP server is available, query before review:
 - Call `search_patterns(query)` for each major file/function being changed
 - Call `get_related_concepts(finding_text)` on any finding to link to wiki entries
 
@@ -598,7 +598,7 @@ JSON: /tmp/hermaguard/hermaguard-20260608-1430-a1b2c3d.json
 Top finding: [HIGH] Race condition in payment processing (Agent 2 + Agent 1 agree)
   → src/payments/handler.ts:42 — concurrent calls can double-charge
 
-No fixes applied. Handing findings to Octacon.
+No fixes applied. Handing findings to a coding agent.
 ```
 
 ---
