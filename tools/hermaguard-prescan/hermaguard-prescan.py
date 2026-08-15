@@ -179,6 +179,27 @@ def _parse_bandit(output: str) -> list:
 
 def _parse_ruff(output: str) -> list:
     findings = []
+    # ruff --output-format json emits a single JSON ARRAY (one object per
+    # finding), NOT newline-delimited JSON. Older versions could emit JSONL;
+    # handle both: try full-array parse first, fall back to per-line JSONL.
+    try:
+        data = json.loads(output)
+        if isinstance(data, list):
+            for r in data:
+                rule_id = r.get("code", "")
+                if rule_id:
+                    findings.append({
+                        "tool": "ruff",
+                        "rule_id": rule_id,
+                        "severity": "LOW",
+                        "file": r.get("filename", ""),
+                        "line": r.get("location", {}).get("row", 0),
+                        "message": r.get("message", ""),
+                        "category": "quality",
+                    })
+            return findings
+    except json.JSONDecodeError:
+        pass
     for line in output.strip().split("\n"):
         if not line:
             continue
@@ -366,7 +387,13 @@ def run_tool(tool_def: dict, files: list, tmpdir: str) -> tuple[str | None, list
         return f"{tool_def['name']} failed: {result.stderr[:200]}", []
 
     parser_name = tool_def["parse"]
-    parser = PARSER_MAP.get(parser_name, lambda x: [])
+    # PARSER_MAP is keyed by TOOL NAME ("bandit", "ruff"), while tool_def
+    # stores the parse function name ("_parse_bandit"). Look up by the tool
+    # name first (the map's actual key), falling back to the function name.
+    # Without this, every lookup returns None and ALL findings are silently
+    # dropped by the lambda fallback — the prescan reported zero findings
+    # from every tool.
+    parser = PARSER_MAP.get(tool_def["name"]) or PARSER_MAP.get(parser_name, lambda x: [])
     try:
         findings = parser(result.stdout.strip())
     except Exception as e:
