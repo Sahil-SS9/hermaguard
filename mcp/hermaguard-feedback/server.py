@@ -79,6 +79,14 @@ def get_db():
             timestamp TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS suppression_rules_cache (
+            rule_id TEXT PRIMARY KEY,
+            pattern TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT,
+            dismissals INTEGER DEFAULT 0
+        );
+
         CREATE INDEX IF NOT EXISTS idx_findings_run ON findings(run_id);
         CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status);
         CREATE INDEX IF NOT EXISTS idx_findings_agent ON findings(source_agent);
@@ -112,6 +120,56 @@ def _error(request_id, code, message):
 
 def _result(request_id, result):
     return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+
+# ── Argument schema validation (draft-04 subset, stdlib only) ──────────────
+
+def _validate_value(value, schema, path: str) -> list:
+    """Validate one value against one schema node. Returns error strings."""
+    errors = []
+    t = schema.get("type", "any")
+    if t == "string":
+        if not isinstance(value, str):
+            errors.append(f"{path}: expected string, got {type(value).__name__}")
+        elif "enum" in schema and value not in schema["enum"]:
+            errors.append(f"{path}: value {value!r} not in enum {schema['enum']}")
+    elif t == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            errors.append(f"{path}: expected integer, got {type(value).__name__}")
+    elif t == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            errors.append(f"{path}: expected number, got {type(value).__name__}")
+    elif t == "boolean":
+        if not isinstance(value, bool):
+            errors.append(f"{path}: expected boolean, got {type(value).__name__}")
+    elif t == "array":
+        if not isinstance(value, list):
+            errors.append(f"{path}: expected array, got {type(value).__name__}")
+    elif t == "object":
+        if not isinstance(value, dict):
+            errors.append(f"{path}: expected object, got {type(value).__name__}")
+        else:
+            props = schema.get("properties", {})
+            for k, ps in props.items():
+                if k in value:
+                    errors.extend(_validate_value(value[k], ps, f"{path}.{k}"))
+    return errors
+
+
+def validate_args(schema: dict, args: dict) -> list:
+    """Validate tool call arguments against an inputSchema.
+    Returns a list of error strings (empty = valid)."""
+    errors = []
+    for req in schema.get("required", []):
+        if req not in args:
+            errors.append(f"missing required argument: {req}")
+    props = schema.get("properties", {})
+    for k, v in args.items():
+        if k not in props:
+            errors.append(f"unknown argument: {k}")
+        else:
+            errors.extend(_validate_value(v, props[k], k))
+    return errors
 
 
 # ── Tool implementations ────────────────────────────────────────────────────
@@ -286,10 +344,16 @@ def tool_accept_finding(conn, args):
     if action == "dismissed-false-positive":
         row = conn.execute("SELECT file_path, trigger_condition, source_agent FROM findings WHERE finding_id = ?", (fid,)).fetchone()
         if row:
-            # Count how many times this pattern was dismissed
+            # Count how many times this pattern was dismissed — from the
+            # acceptance EVENTS table, not the findings table: a single
+            # finding row is updated in place, so counting rows would
+            # never reach the threshold for repeated dismissals.
             pattern = f"{row['source_agent']}:{row['trigger_condition'][:80]}"
             count = conn.execute(
-                "SELECT COUNT(*) FROM findings WHERE source_agent = ? AND trigger_condition = ? AND status = 'dismissed-false-positive'",
+                "SELECT COUNT(*) FROM acceptance_events "
+                "WHERE finding_id IN ("
+                "  SELECT finding_id FROM findings WHERE source_agent = ? AND trigger_condition = ?"
+                ") AND action = 'dismissed-false-positive'",
                 (row["source_agent"], row["trigger_condition"]),
             ).fetchone()[0]
 
@@ -370,7 +434,7 @@ def tool_query_agent_precision(conn, args):
     }
 
 
-def tool_get_suppression_rules(conn):
+def tool_get_suppression_rules(conn, args=None):
     rows = conn.execute(
         "SELECT rule_id, pattern, reason, dismissals FROM suppression_rules_cache ORDER BY dismissals DESC"
     ).fetchall()
@@ -421,18 +485,6 @@ TOOL_DISPATCH = {
 def main():
     conn = get_db()
 
-    # Ensure suppression_rules_cache table exists (created on first feedback acceptance)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS suppression_rules_cache (
-            rule_id TEXT PRIMARY KEY,
-            pattern TEXT NOT NULL,
-            reason TEXT,
-            created_at TEXT,
-            dismissals INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-
     # MCP handshake: handle initialize request
     while True:
         line = sys.stdin.readline()
@@ -465,6 +517,16 @@ def main():
 
             if tool_name not in TOOL_DISPATCH:
                 _write_response(_error(req_id, -32601, f"Unknown tool: {tool_name}"))
+                continue
+
+            # Schema validation before dispatch — invalid params are
+            # rejected with -32602 instead of surfacing as handler crashes.
+            schema = next((t["inputSchema"] for t in tool_list_tools(conn)
+                           if t["name"] == tool_name), {})
+            validation_errors = validate_args(schema, tool_args)
+            if validation_errors:
+                _write_response(_error(req_id, -32602,
+                                       "Invalid params: " + "; ".join(validation_errors)))
                 continue
 
             try:

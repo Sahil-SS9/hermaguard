@@ -559,6 +559,11 @@ CRITICAL findings should be logged to `#governance` — they're system-level ris
 If the `hermaguard-feedback` MCP server is available, record findings and query suppression rules:
 - After report generation: call `record_findings` to store all findings for precision tracking
 - Before Agent 1 dispatch: call `get_suppression_rules` to load patterns that have been repeatedly dismissed
+- Tool args are schema-validated server-side (invalid params → -32602). The
+  server is stdio JSON-RPC, stdlib-only, zero pip deps; run
+  `python3 mcp/hermaguard-feedback/server.py` (DB at `$HERMAGUARD_FEEDBACK_DB`
+  or `~/.hermes/data/hermaguard-feedback.db`). Dismiss a finding as
+  false positive 3× and a suppression rule is created automatically.
 
 ### With Knowledge Graph MCP Server
 If the `kensei-kg` MCP server is available, query before review:
