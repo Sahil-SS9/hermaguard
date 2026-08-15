@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermaguard"
+version = "2.1.0"
+description = "Adversarial code review with deterministic accountability: coverage, verification, and regression gates."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sahil Saghir" }]
+keywords = ["code-review", "security", "llm", "adversarial", "sast"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+hermaguard-coverage = "hermaguard_tools.coverage:main"
+hermaguard-locate = "hermaguard_tools.locate:main"
+hermaguard-role-patterns = "hermaguard_tools.role_patterns:main"
+hermaguard-sanitize = "hermaguard_tools.sanitize:main"
+hermaguard-verify = "hermaguard_tools.verify:main"
+hermaguard-grader = "hermaguard_tools.grader:main"
+hermaguard-prescan = "hermaguard_tools.prescan:main"
+hermaguard-compile-rules = "hermaguard_tools.compile_rules:main"
+hermaguard-benchmark = "hermaguard_tools.benchmark:main"
+
+[tool.setuptools]
+# Tools live under tools/ as flat scripts; expose them via the shim package.
+packages = ["hermaguard_tools"]
+
+[tool.setuptools.package-data]
+hermaguard_tools = ["*.py"]
+
+[tool.setuptools.data-files]
+"share/hermaguard/tools" = [
+    "tools/hermaguard-coverage/hermaguard-coverage.py",
+    "tools/hermaguard-locate/hermaguard-locate.py",
+    "tools/hermaguard-role-patterns/hermaguard-role-patterns.py",
+    "tools/hermaguard-sanitize/hermaguard-sanitize.py",
+    "tools/hermaguard-verify/hermaguard-verify.py",
+    "tools/hermaguard-grader/hermaguard_grader.py",
+    "tools/hermaguard-prescan/hermaguard-prescan.py",
+    "tools/hermaguard-compile-rules/hermaguard-compile-rules.py",
+    "tools/hermaguard-benchmark/benchmark.py",
+]

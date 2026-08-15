@@ -81,7 +81,16 @@ hermaguard/
 
 ## Quick start
 
-Drop `SKILL.md` into your agent's skills directory. On Hermes Agent:
+**Install (recommended):**
+
+```bash
+pip install .
+# → hermaguard-coverage, hermaguard-locate, hermaguard-role-patterns,
+#   hermaguard-sanitize, hermaguard-verify, hermaguard-grader,
+#   hermaguard-prescan, hermaguard-compile-rules, hermaguard-benchmark
+```
+
+**Or run from source:** drop `SKILL.md` into your agent's skills directory. On Hermes Agent:
 
 ```bash
 cp SKILL.md ~/.hermes/skills/software-development/hermaguard/SKILL.md
@@ -110,9 +119,10 @@ Also works with Claude Code, Codex CLI, or any agent framework with subagent cap
 ## Run tests
 
 ```bash
-python3 -m pytest test_tools.py -q     # or: python3 -m unittest test_tools.py -v
-# 46 tests. Every test imports the module and calls real functions —
-# delete a tool and its tests error rather than pass.
+python3 -m unittest test_tools.py test_coverage.py test_loop.py \
+  test_verify.py test_research.py test_mcp.py test_packaging.py -v
+# 126 tests across 7 suites. Every test imports the module and calls real
+# functions — delete a tool and its tests error rather than pass.
 ```
 
 ## Benchmark

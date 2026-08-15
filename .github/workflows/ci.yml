@@ -30,6 +30,9 @@ jobs:
           set -e
           find tools mcp -name '*.py' -print0 | xargs -0 -n1 python3 -m py_compile
 
+      - name: Packaging test — pip install into a fresh venv
+        run: python3 -m unittest test_packaging.py -v
+
       - name: Benchmark scorer smoke test
         run: |
           python3 tools/hermaguard-benchmark/benchmark.py --help >/dev/null
