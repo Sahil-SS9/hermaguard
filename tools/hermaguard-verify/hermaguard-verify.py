@@ -44,7 +44,6 @@ import argparse
 import json
 import os
 import re
-import resource
 import shutil
 import subprocess
 import sys
@@ -53,6 +52,15 @@ import time
 from pathlib import Path
 
 VERSION = "1.0.0"
+
+try:
+    import resource  # Unix-only; guarded for Windows/macOS portability
+    _HAS_RESOURCE = True
+except ImportError:
+    resource = None
+    _HAS_RESOURCE = False
+
+_POSIX = os.name == "posix"
 
 VERIFIED = "VERIFIED"
 REFUTED = "REFUTED"
@@ -80,7 +88,10 @@ def _truncate(s: str) -> str:
 
 
 def _sandbox_limits():
-    """preexec_fn: apply rlimits in the child before exec."""
+    """preexec_fn: apply rlimits in the child before exec. No-op when the
+    resource module is unavailable (Windows) — timeout is the backstop."""
+    if not _HAS_RESOURCE:
+        return
     resource.setrlimit(resource.RLIMIT_CPU, (LIMIT_CPU_SECONDS, LIMIT_CPU_SECONDS))
     resource.setrlimit(resource.RLIMIT_AS, (LIMIT_AS_BYTES, LIMIT_AS_BYTES))
     resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT_FSIZE_BYTES, LIMIT_FSIZE_BYTES))
@@ -105,17 +116,15 @@ def run_poc(poc_path: str, target_path: str | None, expect_fail: bool = False,
             # prepended to sys.path by -I only for scripts — belt and braces:
             # pass the sandbox dir explicitly so `import app` resolves to the
             # STAGED copy, never the repo original.
-            proc = subprocess.run(
-                [sys.executable, "-I", "-c",
-                 f"import sys; sys.path.insert(0, {tmpdir!r}); exec(open({os.path.join(tmpdir, 'poc.py')!r}).read())"],
-                cwd=tmpdir,
-                env={},
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                preexec_fn=_sandbox_limits,
-                start_new_session=True,
-            )
+            cmd = [sys.executable, "-I", "-c",
+                   f"import sys; sys.path.insert(0, {tmpdir!r}); exec(open({os.path.join(tmpdir, 'poc.py')!r}).read())"]
+            kwargs = dict(cwd=tmpdir, env={}, capture_output=True, text=True, timeout=timeout)
+            if _POSIX:
+                # preexec_fn/start_new_session are POSIX-only; on Windows the
+                # wall-clock timeout remains the isolation backstop.
+                kwargs["preexec_fn"] = _sandbox_limits
+                kwargs["start_new_session"] = True
+            proc = subprocess.run(cmd, **kwargs)
             duration_ms = int((time.monotonic() - start) * 1000)
             exit_code = proc.returncode
             stdout = _truncate(proc.stdout)
@@ -137,6 +146,7 @@ def run_poc(poc_path: str, target_path: str | None, expect_fail: bool = False,
             "sandbox": {
                 "env": "empty",
                 "cwd": "throwaway tmpdir",
+                "rlimits_applied": _HAS_RESOURCE and _POSIX,
                 "rlimits": {"cpu_s": LIMIT_CPU_SECONDS, "as_mb": LIMIT_AS_BYTES // (1024 * 1024),
                             "fsize_mb": LIMIT_FSIZE_BYTES // (1024 * 1024), "nproc": LIMIT_NPROC},
                 "isolated_python": True,  # -I: no user site, no env vars, no path injection

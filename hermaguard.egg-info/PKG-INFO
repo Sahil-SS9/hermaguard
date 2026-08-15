@@ -79,7 +79,7 @@ hermaguard/
 ├── SKILL.md                          # The skill (Hermes/Claude/Codex/any harness)
 ├── README.md                         # This file
 ├── LICENSE                           # MIT
-├── test_tools.py                     # 46 tests, all calling real code
+├── test_tools.py                     # 130 tests across 7 suites, all calling real code
 ├── tools/
 │   ├── hermaguard-prescan/           # Deterministic pre-scan CLI
 │   │   └── hermaguard-prescan.py

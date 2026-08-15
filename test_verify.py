@@ -84,6 +84,25 @@ class TestRealPoCRuns(unittest.TestCase):
             ev = V.run_poc(poc, None, expect_fail=False, expect_output=None)
             self.assertEqual(ev["verdict"], "UNVERIFIED")  # proves nothing
 
+    def test_non_posix_fallback_no_crash(self):
+        # Windows has no resource module and no preexec_fn support — the
+        # sandbox must degrade to timeout-only, not crash.
+        saved_posix, saved_res = V._POSIX, V._HAS_RESOURCE
+        V._POSIX, V._HAS_RESOURCE = False, False
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                poc = _write(d, "poc.py", "print('hello')\n")
+                ev = V.run_poc(poc, None, expect_fail=False, expect_output=None)
+                self.assertEqual(ev["verdict"], "UNVERIFIED")
+                self.assertFalse(ev["sandbox"]["rlimits_applied"])
+            with tempfile.TemporaryDirectory() as d:
+                poc = _write(d, "poc.py", "while True: pass\n")
+                ev = V.run_poc(poc, None, expect_fail=True, timeout=3)
+                self.assertEqual(ev["verdict"], "UNVERIFIED")
+                self.assertTrue(ev["timed_out"])
+        finally:
+            V._POSIX, V._HAS_RESOURCE = saved_posix, saved_res
+
     def test_race_condition_verified_by_real_concurrency(self):
         # The hard class CWE-362: double-spend only manifests under actual
         # concurrency. The PoC spawns threads against the buggy code.

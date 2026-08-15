@@ -342,6 +342,40 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         self.assertEqual(s["true_positives"], 1)
         self.assertEqual(s["match_modes"]["keyword"], 1)
 
+    def test_crashed_run_never_scored_ok(self):
+        # Regression: a result file with an error key must not score as OK
+        run = {"error": "agent crashed", "findings": []}
+        s = self.bm.score_run(self.bug, run)
+        self.assertFalse(s["run_ok"])
+
+    def test_missing_run_ok_flag_does_not_crash(self):
+        # Regression: result files predating the run_ok flag previously
+        # raised KeyError inside score_run, killing the whole benchmark.
+        run = {"findings": [
+            {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89"]},
+        ]}
+        s = self.bm.score_run(self.bug, run)
+        self.assertTrue(s["run_ok"])  # defaults to completed
+        self.assertEqual(s["true_positives"], 1)
+
+    def test_real_corpus_scoring_perfect_and_zero(self):
+        import pathlib
+        bugs_dir = pathlib.Path("tools/hermaguard-benchmark/bugs")
+        # Perfect run against real ground truth -> 100/100/100
+        gt = json.loads((bugs_dir / "001-sql-injection/ground-truth.json").read_text())
+        bug = {"id": "001", "title": gt["title"], "severity": gt["severity"],
+               "category": gt["category"], "expected_findings": gt["findings"]}
+        exp = gt["findings"][0]
+        run = {"findings": [{"id": "HG-1", "file": exp["file"],
+                             "severity": exp["severity"], "classes": exp["classes"]}]}
+        s = self.bm.score_run(bug, run)
+        self.assertEqual((s["precision_pct"], s["recall_pct"], s["f1_score"]), (100.0, 100.0, 100.0))
+        # Wrong-class run -> 0
+        run2 = {"findings": [{"id": "HG-1", "file": exp["file"],
+                              "severity": exp["severity"], "classes": ["CWE-79"]}]}
+        s2 = self.bm.score_run(bug, run2)
+        self.assertEqual((s2["precision_pct"], s2["recall_pct"], s2["f1_score"]), (0.0, 0.0, 0.0))
+
     def test_corpus_integrity(self):
         import pathlib
         bugs_dir = pathlib.Path("tools/hermaguard-benchmark/bugs")

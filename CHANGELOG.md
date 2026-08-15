@@ -69,7 +69,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Tests
 
-- 124 tests across 6 suites: tools, coverage, loop, verify, research, MCP.
+- **126 tests across 6 suites**: tools, coverage, loop, verify, research, MCP.
+  (Final pre-push audit added regression tests for the benchmark run_ok
+  handling and non-POSIX sandbox fallback — 130 tests across 7 suites.)
 - E2E coverage: real subprocess sandbox PoCs (including a live race
   condition), full MCP handshake over stdio, compile-rules → prescan loop,
   corpus integrity (all 25 bugs validate against the coverage registry).

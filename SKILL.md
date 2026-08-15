@@ -141,6 +141,25 @@ hermaguard-prescan --files <changed-files-list> --output /tmp/hermaguard/prescan
 
 **The loop is closed:** dismiss a finding as false positive 3× (feedback MCP `accept_finding`) → `hermaguard-compile-rules` compiles it into a suppression rule → the pre-scan applies that rule on every future run. Learned noise stays suppressed; the stats block reports `suppression_rules_applied` and `suppressed_findings` so suppression is always visible, never silent.
 
+### Phase 0c: Coverage Ledger
+
+Before dispatching agents, build the coverage ledger for the changed files:
+
+```bash
+hermaguard-coverage --files <changed-files-list> --ledger /tmp/hermaguard/ledger-{hash}.json
+# (tool lives at tools/hermaguard-coverage/hermaguard-coverage.py)
+```
+
+The registry covers the 2024 MITRE CWE Top 25 (verified against cwe.mitre.org) plus race conditions, resource leaks, exception handling, and 4 Hermaguard-native classes (async rejection, degenerate handlers, state transitions, partial writes). Language rules mark memory-unsafe classes N/A for safe languages (CWE-787/125/416/119 for Python/TS/Go/Java; Rust keeps them as hints via `unsafe`).
+
+**This ledger is the accountability contract for the report.** The consolidator MUST produce a `coverage` array where every applicable class appears exactly once with status `finding` (backed by a real finding citing `classes: ["CWE-89"]`), `clean` (checked, no issue), or `not_applicable` (with reason). Validate before shipping the report:
+
+```bash
+hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
+```
+
+Exit 1 = coverage gaps = the report is incomplete. No exceptions. A review that silently skips bug classes is theatre — the coverage check is what makes it accountable.
+
 ### Phase 0d: Research Pre-Pass (locate + role patterns + sanitize)
 
 Three deterministic pre-passes run before agents dispatch. All three are
@@ -178,25 +197,6 @@ If the tool is not installed, skip pre-scan and note it in the report: "Pre-scan
 If the tool returns findings, load the JSON and inject as context into agents 1 and 2. Each finding has `tool`, `rule_id`, `severity`, `file`, `line`, `message`, `category`; full schema in `references/output-schema.md`.
 
 Skip pre-scan with `--no-prescan` flag.
-
-### Phase 0c: Coverage Ledger
-
-Before dispatching agents, build the coverage ledger for the changed files:
-
-```bash
-hermaguard-coverage --files <changed-files-list> --ledger /tmp/hermaguard/ledger-{hash}.json
-# (tool lives at tools/hermaguard-coverage/hermaguard-coverage.py)
-```
-
-The registry covers the 2024 MITRE CWE Top 25 (verified against cwe.mitre.org) plus race conditions, resource leaks, exception handling, and 4 Hermaguard-native classes (async rejection, degenerate handlers, state transitions, partial writes). Language rules mark memory-unsafe classes N/A for safe languages (CWE-787/125/416/119 for Python/TS/Go/Java; Rust keeps them as hints via `unsafe`).
-
-**This ledger is the accountability contract for the report.** The consolidator MUST produce a `coverage` array where every applicable class appears exactly once with status `finding` (backed by a real finding citing `classes: ["CWE-89"]`), `clean` (checked, no issue), or `not_applicable` (with reason). Validate before shipping the report:
-
-```bash
-hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
-```
-
-Exit 1 = coverage gaps = the report is incomplete. No exceptions. A review that silently skips bug classes is theatre — the coverage check is what makes it accountable.
 
 ### Phase 1: Parallel Dispatch (Batch Mode)
 
@@ -531,7 +531,7 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 **No fixes were applied by this review.** Findings to be picked up by Octacon as separate tasks.
 ```
 
-**JSON output schema:** five top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason — the accountability ledger), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
+**JSON output schema:** six top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason — the accountability ledger), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
 
 ---
 

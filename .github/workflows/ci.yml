@@ -40,7 +40,7 @@ jobs:
 
       - name: Grader smoke test
         run: |
-          python3 tools/hermaguard-grader/hermaguard_grader.py --help >/dev/null
+          python3 tools/hermaguard-grader/hermaguard_grader.py --self-test >/dev/null
           echo "grader: OK"
 
       - name: Coverage checklist self-check
@@ -49,11 +49,11 @@ jobs:
           echo "coverage checklist: OK"
 
   actionlint:
-    name: Lint GitHub Action
+    name: Lint GitHub Actions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run actionlint on integrations/github-action/action.yml
+      - name: Run actionlint on all workflow files
         run: |
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -shellcheck= -color integrations/github-action/action.yml
+          ./actionlint -shellcheck= .github/workflows/ci.yml integrations/github-action/action.yml

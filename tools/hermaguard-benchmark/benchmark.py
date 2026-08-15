@@ -200,7 +200,10 @@ def score_run(bug: dict, run_info: dict) -> dict:
         "severity_accuracy_pct": severity_accuracy,
         "matches": matches,
         "match_modes": match_modes,
-        "run_ok": run_info["run_ok"],
+        # A result file without an explicit run_ok flag is treated as a
+        # completed run (backward compat) UNLESS it carries an error key —
+        # a crashed run must never be scored as OK.
+        "run_ok": bool(run_info.get("run_ok", not run_info.get("error"))),
         "run_error": run_info.get("error"),
     }
 
