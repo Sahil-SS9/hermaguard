@@ -1,5 +1,24 @@
+# Python build artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+build/
+dist/
+*.egg-info/
+
+# Python tooling caches
 .pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Hermaguard runtime data
+*.db
+*.db-wal
+*.db-shm
 data/
+
+# Test/temp output
+results/
+report.html
 tools/hermaguard-benchmark/results/*.html
