@@ -754,5 +754,224 @@ class TestTakeoverFixes(unittest.TestCase):
         os.rmdir(out_dir)
 
 
+class TestPrescanIssue1Takeover(unittest.TestCase):
+    """Behavioural regression tests for issue #1 and the maintainer salvage."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = _load_module(
+            "prescan_issue1_takeover",
+            "tools/hermaguard-prescan/hermaguard-prescan.py",
+        )
+
+    def _run_tool(self, tool_def, stdout="[]", returncode=1, files=None):
+        completed = mock.Mock(returncode=returncode, stdout=stdout, stderr="")
+        executable = f"/safe/bin/{tool_def['name']}"
+        with mock.patch.object(self.mod, "find_tool", return_value=executable), \
+             mock.patch.object(self.mod.subprocess, "run", return_value=completed) as run:
+            err, findings = self.mod.run_tool(
+                tool_def,
+                files or ["sample.py"],
+                tempfile.gettempdir(),
+            )
+        return err, findings, run.call_args.args[0], executable
+
+    def test_run_tool_dispatches_by_tool_name_and_uses_discovered_executable(self):
+        tool_def = self.mod.LANGUAGE_TOOLS[".py"][0]
+        sample = json.dumps({"results": [{
+            "test_id": "B301",
+            "issue_severity": "HIGH",
+            "filename": "sample.py",
+            "line_number": 7,
+            "issue_text": "unsafe deserialisation",
+        }]})
+
+        err, findings, cmd, executable = self._run_tool(tool_def, sample)
+
+        self.assertIsNone(err)
+        self.assertEqual([f["rule_id"] for f in findings], ["B301"])
+        self.assertEqual(cmd[0], executable)
+
+    def test_ruff_parses_json_array_and_jsonl_with_security_metadata(self):
+        array_sample = json.dumps([
+            {
+                "code": "S602",
+                "severity": "error",
+                "filename": "sample.py",
+                "location": {"row": 9},
+                "message": "shell=True",
+            },
+            {
+                "code": "SIM102",
+                "severity": "error",
+                "filename": "sample.py",
+                "location": {"row": 12},
+                "message": "nested if",
+            },
+        ])
+        jsonl_sample = json.dumps({
+            "code": "F401",
+            "severity": "error",
+            "filename": "sample.py",
+            "location": {"row": 2},
+            "message": "unused import",
+        }) + "\n"
+
+        array_findings = self.mod._parse_ruff(array_sample)
+        jsonl_findings = self.mod._parse_ruff(jsonl_sample)
+
+        self.assertEqual(len(array_findings), 2)
+        # Ruff's diagnostic severity is normally "error" for every lint rule;
+        # risk is derived from the rule family instead of inflating all lint.
+        self.assertEqual(array_findings[0]["severity"], "MEDIUM")
+        self.assertEqual(array_findings[0]["category"], "security")
+        self.assertEqual(array_findings[1]["severity"], "LOW")
+        self.assertEqual(array_findings[1]["category"], "quality")
+        self.assertEqual(len(jsonl_findings), 1)
+        self.assertEqual(jsonl_findings[0]["severity"], "LOW")
+        self.assertEqual(jsonl_findings[0]["category"], "quality")
+
+    def test_ruff_skips_malformed_entries_without_dropping_valid_siblings(self):
+        sample = json.dumps([
+            None,
+            42,
+            ["not", "a", "finding"],
+            {
+                "code": "S101",
+                "severity": "error",
+                "filename": "sample.py",
+                "location": None,
+                "message": "assert used",
+            },
+        ])
+
+        findings = self.mod._parse_ruff(sample)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["rule_id"], "S101")
+        self.assertEqual(findings[0]["line"], 0)
+
+    def test_unknown_parser_fails_closed(self):
+        tool_def = {
+            "name": "future-sast",
+            "install_hint": "none",
+            "build_cmd": lambda files, tmpdir: ["future-sast", *files],
+            "parse": "_parse_future_sast",
+        }
+
+        err, findings, _, _ = self._run_tool(tool_def, "{}", returncode=0)
+
+        self.assertIn("no parser registered", err)
+        self.assertEqual(findings, [])
+
+    def test_scanner_argv_neutralises_leading_dash_and_disables_ruff_cache(self):
+        tool_def = self.mod.LANGUAGE_TOOLS[".py"][1]
+        files = ["--config=evil.py", "normal.py", "/absolute/-option.py"]
+
+        err, findings, cmd, _ = self._run_tool(
+            tool_def,
+            "[]",
+            returncode=0,
+            files=files,
+        )
+
+        self.assertIsNone(err)
+        self.assertEqual(findings, [])
+        self.assertIn("--no-cache", cmd)
+        self.assertIn("./--config=evil.py", cmd)
+        self.assertNotIn("--config=evil.py", cmd)
+        self.assertIn("normal.py", cmd)
+        self.assertIn("/absolute/-option.py", cmd)
+
+    def test_run_prescan_marks_partial_and_complete_scans_truthfully(self):
+        ruff_result = mock.Mock(returncode=0, stdout="[]", stderr="")
+
+        def partial_find(name):
+            return "/safe/bin/ruff" if name == "ruff" else None
+
+        with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
+             mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
+            partial = self.mod.run_prescan(
+                ["sample.py"],
+                restrict_tools=["bandit", "ruff"],
+            )
+
+        with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
+             mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
+            complete = self.mod.run_prescan(
+                ["sample.py"],
+                restrict_tools=["ruff"],
+            )
+
+        self.assertFalse(partial["stats"]["scan_complete"])
+        self.assertIn("bandit", partial["stats"]["tools_skipped"])
+        self.assertTrue(complete["stats"]["scan_complete"])
+
+    def test_cli_exits_nonzero_when_no_scanner_completes(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = os.path.join(d, "prescan.json")
+            argv = [
+                "hermaguard-prescan",
+                "--files", "sample.py",
+                "--tools", "bandit,ruff",
+                "--output", output,
+            ]
+            with mock.patch.object(self.mod, "find_tool", return_value=None), \
+                 mock.patch.object(sys, "argv", argv), \
+                 self.assertRaises(SystemExit) as raised:
+                self.mod.main()
+
+            payload = json.loads(Path(output).read_text())
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertFalse(payload["stats"]["scan_complete"])
+
+    def test_cli_handles_empty_file_argument_without_crashing(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = os.path.join(d, "prescan.json")
+            argv = [
+                "hermaguard-prescan",
+                "--files", "",
+                "--output", output,
+            ]
+            with mock.patch.object(sys, "argv", argv), \
+                 self.assertRaises(SystemExit) as raised:
+                self.mod.main()
+
+            payload = json.loads(Path(output).read_text())
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertEqual(payload["stats"]["files_scanned"], 0)
+        self.assertFalse(payload["stats"]["scan_complete"])
+
+    def test_ruff_invalid_only_output_fails_closed(self):
+        tool_def = self.mod.LANGUAGE_TOOLS[".py"][1]
+
+        for payload in ("not-json", "null", "true", "42"):
+            with self.subTest(payload=payload):
+                err, findings, _, _ = self._run_tool(
+                    tool_def,
+                    payload,
+                    returncode=0,
+                )
+                self.assertIn("parse error", err)
+                self.assertEqual(findings, [])
+
+    def test_failed_generic_semgrep_is_not_counted_as_completed(self):
+        failed = mock.Mock(returncode=2, stdout="", stderr="semgrep failed")
+
+        def semgrep_only(name):
+            return "/safe/bin/semgrep" if name == "semgrep" else None
+
+        with mock.patch.object(self.mod, "find_tool", side_effect=semgrep_only), \
+             mock.patch.object(self.mod.subprocess, "run", return_value=failed):
+            output = self.mod.run_prescan(["sample.unknown"])
+
+        self.assertEqual(output["stats"]["tools_run"], [])
+        self.assertFalse(output["stats"]["scan_complete"])
+        self.assertTrue(any("semgrep-generic" in item
+                            for item in output["stats"]["tools_skipped"]))
+
+
 if __name__ == "__main__":
     unittest.main()

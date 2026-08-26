@@ -11,7 +11,7 @@ Usage:
 
 Output: JSON written to --output path, stdout prints summary stats.
 Exit code 0 even when findings found (findings are informational).
-Exit code 1 on tool failure (unavailable linter, no files, etc).
+Exit code 1 when no scanner completed.
 """
 
 import argparse
@@ -41,7 +41,7 @@ LANGUAGE_TOOLS = {
             "name": "ruff",
             "install_hint": "pip install ruff",
             "build_cmd": lambda files, tmpdir: [
-                "ruff", "check", "--output-format", "json", "--select",
+                "ruff", "check", "--no-cache", "--output-format", "json", "--select",
                 "B,PLC,PLW,S,A,SIM,C4,PT", *files
             ],
             "parse": "_parse_ruff",
@@ -177,26 +177,66 @@ def _parse_bandit(output: str) -> list:
     return findings
 
 
+def _normalise_ruff_finding(record: object) -> dict | None:
+    """Convert one Ruff diagnostic, ignoring malformed sibling entries."""
+    if not isinstance(record, dict):
+        return None
+    rule_id = str(record.get("code") or "")
+    if not rule_id:
+        return None
+    # Ruff's flake8-bandit family is S followed by digits. Do not classify
+    # unrelated S-prefixed families such as SIM (flake8-simplify) as security.
+    is_security = bool(re.match(r"^S\d", rule_id))
+    location = record.get("location")
+    line = location.get("row", 0) if isinstance(location, dict) else 0
+    return {
+        "tool": "ruff",
+        "rule_id": rule_id,
+        # Ruff's JSON "severity" is a diagnostic level, not a risk score:
+        # normal lint violations are commonly labelled "error". Avoid
+        # inflating every quality finding while elevating security rules.
+        "severity": "MEDIUM" if is_security else "LOW",
+        "file": record.get("filename", ""),
+        "line": line,
+        "message": record.get("message", ""),
+        "category": "security" if is_security else "quality",
+    }
+
+
 def _parse_ruff(output: str) -> list:
+    """Parse current Ruff JSON arrays and legacy newline-delimited JSON."""
+    text = output.strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        records = []
+        invalid_lines = 0
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                invalid_lines += 1
+                continue
+            records.extend(item if isinstance(item, list) else [item])
+        if invalid_lines and not records:
+            raise ValueError("invalid Ruff JSON output")
+    else:
+        if isinstance(data, list):
+            records = data
+        elif isinstance(data, dict):
+            records = [data]
+        else:
+            raise TypeError("invalid Ruff JSON shape")
+
     findings = []
-    for line in output.strip().split("\n"):
-        if not line:
-            continue
-        try:
-            r = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        rule_id = r.get("code", "")
-        if rule_id:
-            findings.append({
-                "tool": "ruff",
-                "rule_id": rule_id,
-                "severity": "LOW",
-                "file": r.get("filename", ""),
-                "line": r.get("location", {}).get("row", 0),
-                "message": r.get("message", ""),
-                "category": "quality",
-            })
+    for record in records:
+        finding = _normalise_ruff_finding(record)
+        if finding is not None:
+            findings.append(finding)
     return findings
 
 
@@ -317,7 +357,7 @@ def find_tool(name: str) -> str | None:
 
 
 def split_files(files_arg: str) -> list:
-    """Split comma/space-separated file list into list of paths."""
+    """Split comma- or newline-separated file paths."""
     # Try comma-separated first, then newline-separated (from git diff --name-only)
     if "," in files_arg:
         return [f.strip() for f in files_arg.split(",") if f.strip()]
@@ -345,6 +385,12 @@ def group_by_extension(files: list, restrict_tools: list | None = None) -> dict:
     return groups
 
 
+def _safe_tool_files(files: list) -> list:
+    """Keep relative filenames beginning with '-' from becoming CLI options."""
+    return [f"./{path}" if path.startswith("-") and not os.path.isabs(path) else path
+            for path in files]
+
+
 def run_tool(tool_def: dict, files: list, tmpdir: str) -> tuple[str | None, list]:
     """Run a single tool. Returns (None, [findings]) on success or (error_msg, []) on failure."""
     if not files:
@@ -354,7 +400,10 @@ def run_tool(tool_def: dict, files: list, tmpdir: str) -> tuple[str | None, list
     if not tool_path:
         return f"{tool_def['name']} not installed ({tool_def.get('install_hint', '')})", []
 
-    cmd = tool_def["build_cmd"](files, tmpdir)
+    cmd = tool_def["build_cmd"](_safe_tool_files(files), tmpdir)
+    if not cmd:
+        return f"{tool_def['name']} produced an empty command", []
+    cmd[0] = tool_path
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
@@ -366,7 +415,15 @@ def run_tool(tool_def: dict, files: list, tmpdir: str) -> tuple[str | None, list
         return f"{tool_def['name']} failed: {result.stderr[:200]}", []
 
     parser_name = tool_def["parse"]
-    parser = PARSER_MAP.get(parser_name, lambda x: [])
+    # PARSER_MAP is keyed by TOOL NAME ("bandit", "ruff"), while tool_def
+    # stores the parse function name ("_parse_bandit"). Look up by the tool
+    # name first (the map's actual key), falling back to the function name.
+    # Without this, every lookup returns None and ALL findings are silently
+    # dropped by the lambda fallback — the prescan reported zero findings
+    # from every tool.
+    parser = PARSER_MAP.get(tool_def["name"]) or PARSER_MAP.get(parser_name)
+    if parser is None:
+        return f"{tool_def['name']} no parser registered ({parser_name})", []
     try:
         findings = parser(result.stdout.strip())
     except Exception as e:
@@ -544,6 +601,7 @@ def run_prescan(files: list, restrict_tools: list | None = None,
             if not err:
                 all_findings.extend(findings)
             else:
+                tools_run.remove("semgrep")
                 tools_skipped.append(f"semgrep-generic ({err})")
 
     # Deduplicate: same (file, line, tool, rule_id) = same finding
@@ -568,6 +626,7 @@ def run_prescan(files: list, restrict_tools: list | None = None,
         "stats": {
             "tools_run": tools_run,
             "tools_skipped": tools_skipped,
+            "scan_complete": bool(tools_run) and not tools_skipped,
             "total_findings": len(kept),
             "by_severity": by_sev,
             "files_scanned": len(files),
@@ -609,13 +668,15 @@ def main():
     )
     args = parser.parse_args()
 
-    files = split_files(args.files or args.diff)
+    files_arg = args.files if args.files is not None else (args.diff or "")
+    files = split_files(files_arg)
     if not files:
         output = {
             "findings": [],
             "stats": {
                 "tools_run": [],
                 "tools_skipped": [],
+                "scan_complete": False,
                 "total_findings": 0,
                 "by_severity": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0},
                 "files_scanned": 0,
@@ -637,6 +698,7 @@ def main():
     print(f"  Tools run: {', '.join(stats['tools_run']) if stats['tools_run'] else 'none'}")
     if stats["tools_skipped"]:
         print(f"  Tools skipped: {', '.join(stats['tools_skipped'])}")
+    print(f"  Scan complete: {'yes' if stats['scan_complete'] else 'no'}")
     sevs = []
     for s, c in stats["by_severity"].items():
         if c > 0:
@@ -645,7 +707,7 @@ def main():
         print(f"  By severity: {', '.join(sevs)}")
     print(f"  Output: {args.output}")
 
-    sys.exit(0)
+    sys.exit(0 if stats["tools_run"] else 1)
 
 
 if __name__ == "__main__":
