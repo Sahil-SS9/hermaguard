@@ -43,7 +43,7 @@ v2.1 adds the **accountability layer** — the review can no longer claim things
 - **L0–L6 harm grader:** deterministic action-graded severity per finding (taxonomy from arXiv:2607.07474).
 - **Closed learning loop:** dismiss a false positive 3× → compiled suppression rule → prescan applies it on every future run. Suppression is always visible in stats.
 - **Research pre-passes:** locate (SHERLOC-style fault localization, arXiv:2606.24820), role-patterns (agent-specific SAST rules, CLAWAUDIT lesson), sanitize (CodeSentinel-style prompt-injection defense, arXiv:2606.19235).
-- **CI on itself, pip packaging** with 9 console scripts, and 130 tests across 7 suites.
+- **CI on itself, pip packaging** with 9 console scripts, and 140 tests across 7 suites.
 
 See [docs/architecture.html](docs/architecture.html) for the full pipeline diagram, and [CHANGELOG.md](CHANGELOG.md) for details.
 
@@ -76,7 +76,7 @@ hermaguard/
 ├── pyproject.toml                    # pip install . → 9 console scripts
 ├── docs/
 │   └── architecture.html             # Pipeline architecture diagram
-├── test_tools.py                     # 130 tests across 7 suites, all calling real code
+├── test_tools.py                     # Main tool tests (full suite: 140 across 7 files)
 ├── tools/
 │   ├── hermaguard-prescan/           # Deterministic pre-scan CLI (+ suppression rules)
 │   ├── hermaguard-coverage/          # Coverage checklist (32 bug classes)
@@ -137,7 +137,7 @@ Also works with Claude Code, Codex CLI, or any agent framework with subagent cap
 ```bash
 python3 -m unittest test_tools.py test_coverage.py test_loop.py \
   test_verify.py test_research.py test_mcp.py test_packaging.py -v
-# 126 tests across 7 suites. Every test imports the module and calls real
+# 140 tests across 7 suites. Every test imports the module and calls real
 # functions — delete a tool and its tests error rather than pass.
 ```
 
@@ -178,6 +178,10 @@ v2.0.0 extensions based on findings from TRACE (runtime enforcement), HyperTool 
 - **Benchmark and GitHub Action:** in-repo under `tools/hermaguard-benchmark/` and `integrations/github-action/` (not separate repos).
 - **Author:** Sahil Saghir ([@Sahil-SS9](https://github.com/Sahil-SS9))
 - **License:** MIT
+
+## Contributors
+
+- [dream-hermes-agent](https://github.com/dream-hermes-agent) — identified the prescan parser-dispatch defect and contributed the original Ruff JSON-array fix in [PR #2](https://github.com/Sahil-SS9/hermaguard/pull/2).
 
 ## Contributing
 

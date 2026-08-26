@@ -24,11 +24,16 @@ loaded skill stays lean.
   "stats": {
     "tools_run": ["bandit", "ruff"],
     "tools_skipped": ["gosec"],
+    "scan_complete": false,
     "total_findings": 12,
     "by_severity": {"CRITICAL": 0, "HIGH": 2, "MEDIUM": 5, "LOW": 5}
   }
 }
 ```
+
+`scan_complete` is `true` only when at least one applicable scanner completed
+and none was skipped. Consumers must never treat an empty `findings` array as a
+clean scan when `scan_complete` is `false`.
 
 ## JSON report schema (`--json`)
 
