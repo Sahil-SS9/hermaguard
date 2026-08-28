@@ -34,6 +34,7 @@ hermaguard-grader = "hermaguard_tools.grader:main"
 hermaguard-prescan = "hermaguard_tools.prescan:main"
 hermaguard-compile-rules = "hermaguard_tools.compile_rules:main"
 hermaguard-benchmark = "hermaguard_tools.benchmark:main"
+hermaguard-trajectory = "hermaguard_tools.trajectory:main"
 
 [tool.setuptools]
 # Tools live under tools/ as flat scripts; expose them via the shim package.
@@ -53,4 +54,5 @@ hermaguard_tools = ["*.py"]
     "tools/hermaguard-prescan/hermaguard-prescan.py",
     "tools/hermaguard-compile-rules/hermaguard-compile-rules.py",
     "tools/hermaguard-benchmark/benchmark.py",
+    "tools/hermaguard-trajectory/hermaguard-trajectory.py",
 ]

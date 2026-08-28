@@ -23,6 +23,7 @@ TOOL_LAYOUT = {
     "prescan": ("hermaguard-prescan", "hermaguard-prescan"),
     "compile_rules": ("hermaguard-compile-rules", "hermaguard-compile-rules"),
     "benchmark": ("hermaguard-benchmark", "benchmark"),
+    "trajectory": ("hermaguard-trajectory", "hermaguard-trajectory"),
 }
 
 

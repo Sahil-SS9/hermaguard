@@ -4,6 +4,26 @@ All notable changes to Hermaguard are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — skill-creation trajectory audit (Phase 1 of skill-safety-audit)
+
+- **Trajectory audit** (`hermaguard-trajectory`): deterministic scan of a
+  skill-creation trajectory for misevolution. Detects approval-gate bypasses
+  (gated action executed without a granted approval, approval requested but
+  never granted, approval granted by a disallowed actor), outputs produced
+  without a required verification step (required step missing, or present but
+  failed), and deprecated tool invocations (configurable `deprecated_tools`
+  registry with replacement guidance). Emits findings in the prescan-normalized
+  schema with rule ID, severity, evidence and remediation. Policy is
+  configurable via JSON (`approval_gates` + `verification_steps` +
+  `deprecated_tools`); a built-in skill-creation default is used when none is
+  supplied. Missing or malformed tool metadata is handled safely. A clean
+  trajectory produces zero findings.
+- **Packaging**: new `hermaguard-trajectory` console script (10 total) and
+  data-file entry; `test_trajectory.py` suite (20 tests) covering clean and
+  flagged trajectories plus configurable-policy, deprecated-tool and CLI paths.
+
 ## [2.1.0] — 2026-08-15
 
 ### Added — accountability layer (the "can't lie" upgrades)

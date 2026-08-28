@@ -18,6 +18,7 @@ CONSOLE_SCRIPTS = [
     "hermaguard-coverage", "hermaguard-locate", "hermaguard-role-patterns",
     "hermaguard-sanitize", "hermaguard-verify", "hermaguard-prescan",
     "hermaguard-compile-rules", "hermaguard-benchmark", "hermaguard-grader",
+    "hermaguard-trajectory",
 ]
 
 # Tools whose --help/--self-test is the smoke check
