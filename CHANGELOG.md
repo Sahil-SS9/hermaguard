@@ -21,8 +21,20 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   supplied. Missing or malformed tool metadata is handled safely. A clean
   trajectory produces zero findings.
 - **Packaging**: new `hermaguard-trajectory` console script (10 total) and
-  data-file entry; `test_trajectory.py` suite (20 tests) covering clean and
+  data-file entry; `test_trajectory.py` suite (23 tests) covering clean and
   flagged trajectories plus configurable-policy, deprecated-tool and CLI paths.
+
+### Fixed — trajectory approval-gate scoping (security)
+
+- **Approval-gate scoping**: approval events are now scoped to the exact gated
+  action they authorize (`detail` reference, else the next gated action). An
+  approval granted for one gate (e.g. `commit`) can no longer bleed across an
+  independent gate (e.g. `publish`), eliminating a **false negative** where a
+  `publish` with no approval passed the gate when any earlier bare/human
+  approval existed, and a **false positive** (`TRAJ-APPROVAL-003`) on clean
+  multi-gate trajectories.
+- **`TRAJ-APPROVAL-003` attribution**: the finding now cites the disallowed
+  *approver*, not the actor who executed the action.
 
 ## [2.1.0] — 2026-08-15
 

@@ -132,26 +132,73 @@ def _events_before(events, step):
             if isinstance(e, dict) and e.get("step", 0) < step]
 
 
-def _has_approval(events, gate, step):
-    """Return the approval event (if any) before `step` for this gate."""
+def _approval_for_gate(events, gate, step, gates):
+    """Return the approval event for this gate before `step`, or None.
+
+    Scoped to a single gated action so one approval cannot bleed across
+    independent gates (a `commit` approval must not silently satisfy a
+    `publish` gate). An approve event is matched for this gate when:
+      1. It carries a ``detail`` that references this gate's action name
+         (case-insensitive substring, the same convention `_has_request`
+         uses); or
+      2. It is a bare approve (no detail) that is the most recent one before
+         `step` AND no later gated action intervenes between it and `step`
+         (so a commit approval does not outlive the commit to authorize a
+         later publish).
+    Returns the matched event dict, or None.
+    """
+    gated = str(gate.get("action", "")).lower()
+    candidate = None
     for e in _events_before(events, step):
-        if e.get("action") == gate.get("requires"):
-            return e
-    return None
+        if e.get("action") != "approve":
+            continue
+        detail = str(e.get("detail", "")).lower().strip()
+        if detail:
+            if gated and gated in detail:
+                return e
+            continue  # approval for a different, explicitly-named action
+        # Bare approve: it authorizes this gate only if this gate's action
+        # is the next gated action after the approval.
+        _blocked = False
+        for f in events:
+            if not isinstance(f, dict) or f.get("step", 0) <= e.get("step", 0):
+                continue
+            fstep = f.get("step", 0)
+            if fstep >= step:
+                break
+            if f.get("action") in (g.get("action") for g in gates):
+                if f.get("action") == gate.get("action"):
+                    break
+                _blocked = True
+                break
+        if not _blocked:
+            candidate = e
+    return candidate
 
 
 def _has_request(events, gate, step):
-    """Return True if an approval request for this gate precedes `step`."""
+    """Return True if an approval request scoped to this gate precedes step.
+
+    A request only counts for the gate whose action it references by name
+    (case-insensitive substring). A bare ``request_approval`` scopes to the
+    next gated action that follows it, so it cannot spuriously downgrade an
+    unrelated later gate.
+    """
+    gated = str(gate.get("action", "")).lower()
     for e in _events_before(events, step):
-        if e.get("action") == "request_approval":
-            detail = str(e.get("detail", "")).lower()
-            target = str(gate.get("action", "")).lower()
-            if target and target in detail:
+        if e.get("action") != "request_approval":
+            continue
+        detail = str(e.get("detail", "")).lower().strip()
+        if detail:
+            if gated and gated in detail:
                 return True
-            # A bare request_approval with no detail is treated as a request
-            # for the next gated action.
-            if not detail:
-                return True
+        else:
+            # Bare request scopes to the next gated action after it.
+            for f in events:
+                if not isinstance(f, dict) or f.get("step", 0) <= e.get("step", 0):
+                    continue
+                if f.get("action") == gate.get("action"):
+                    return True
     return False
 
 
@@ -234,7 +281,7 @@ def audit_trajectory(events, policy=None):
             if not isinstance(e, dict) or e.get("action") != gated_action:
                 continue
             step = e.get("step", 0)
-            approver = _has_approval(events, gate, step)
+            approver = _approval_for_gate(events, gate, step, gates)
             if approver is None:
                 if _has_request(events, gate, step):
                     findings.append(_mk(
@@ -247,7 +294,7 @@ def audit_trajectory(events, policy=None):
             elif approver.get("actor") not in approvers:
                 findings.append(_mk(
                     "TRAJ-APPROVAL-003", e, gate,
-                    evidence=f"approval at step {approver.get('step')} by '{approver.get('actor')}' not in {approvers}"))
+                    evidence=f"approval at step {approver.get('step')} by '{approver.get('actor')}' not in {approvers}", approver_actor=approver.get("actor")))
 
     # ---- verification step checks ----
     for vs in verifications:
@@ -276,8 +323,13 @@ def audit_trajectory(events, policy=None):
     return findings
 
 
-def _mk(rule_id, event, gate, evidence, required=None):
+def _mk(rule_id, event, gate, evidence, required=None, approver_actor=None):
     meta = RULE_META[rule_id]
+    # For approval-actor findings (TRAJ-APPROVAL-003) the offending actor is
+    # the approver, not the actor who executed the action.
+    actor = event.get("actor", "?")
+    if rule_id == "TRAJ-APPROVAL-003" and approver_actor:
+        actor = approver_actor
     return {
         "tool": TOOL_NAME,
         "rule_id": rule_id,
@@ -287,7 +339,7 @@ def _mk(rule_id, event, gate, evidence, required=None):
         "message": meta["message"].format(
             action=gate.get("action", "?"),
             approvers=gate.get("approvers", []),
-            actor=event.get("actor", "?"),
+            actor=actor,
             required=required or gate.get("requires", "?")),
         "category": meta["category"],
         "class_id": rule_id,
@@ -295,7 +347,7 @@ def _mk(rule_id, event, gate, evidence, required=None):
         "remediation": meta["remediation"].format(
             action=gate.get("action", "?"),
             approvers=gate.get("approvers", []),
-            actor=event.get("actor", "?"),
+            actor=actor,
             required=required or gate.get("requires", "?")),
     }
 

@@ -76,6 +76,60 @@ class TestCleanTrajectory(unittest.TestCase):
         findings = TRAJ.audit_trajectory(events)
         self.assertEqual(findings, [])
 
+    def test_approval_for_one_gate_does_not_bleed_into_another(self):
+        """A publish followed by a commit-style approval must NOT pass the
+        publish approval gate (no false negative across disjoint gates)."""
+        events = [
+            {"step": 1, "action": "request_approval", "actor": "agent",
+             "detail": "commit"},
+            {"step": 2, "action": "approve", "actor": "human",
+             "detail": "commit"},
+            {"step": 3, "action": "commit", "actor": "agent"},
+            {"step": 4, "action": "test", "actor": "agent", "status": "pass"},
+            {"step": 5, "action": "review", "actor": "reviewer", "status": "pass"},
+            {"step": 6, "action": "publish", "actor": "agent"},
+        ]
+        findings = TRAJ.audit_trajectory(events)
+        publishes = [f for f in findings
+                     if f["evidence"].startswith("action 'publish'")]
+        self.assertTrue(any(
+            f["rule_id"] == "TRAJ-APPROVAL-001" for f in publishes),
+            "publish must not inherit the earlier commit approval")
+
+    def test_clean_multi_gate_trajectory_produces_no_findings(self):
+        """An explicitly scoped multi-gate trajectory stays clean — the
+        commit approval must not be misattributed to the publish gate."""
+        events = [
+            {"step": 1, "action": "request_approval", "actor": "agent",
+             "detail": "commit"},
+            {"step": 2, "action": "approve", "actor": "human",
+             "detail": "commit"},
+            {"step": 3, "action": "test", "actor": "agent", "status": "pass"},
+            {"step": 4, "action": "review", "actor": "reviewer",
+             "status": "pass"},
+            {"step": 5, "action": "commit", "actor": "agent"},
+            {"step": 6, "action": "request_approval", "actor": "agent",
+             "detail": "publish"},
+            {"step": 7, "action": "approve", "actor": "human",
+             "detail": "publish"},
+            {"step": 8, "action": "publish", "actor": "agent"},
+        ]
+        findings = TRAJ.audit_trajectory(events)
+        self.assertEqual(findings, [])
+
+    def test_approval_003_names_the_approver_not_the_actor(self):
+        """The TRAJ-APPROVAL-003 finding must cite the disallowed approver,
+        not the actor who executed the action."""
+        events = [
+            {"step": 1, "action": "approve", "actor": "agent", "detail": "commit"},
+            {"step": 2, "action": "commit", "actor": "human"},
+        ]
+        findings = TRAJ.audit_trajectory(events)
+        f = next((x for x in findings if x["rule_id"] == "TRAJ-APPROVAL-003"),
+                 None)
+        self.assertIsNotNone(f)
+        self.assertIn("'agent'", f["message"])
+
 
 class TestApprovalGateBypass(unittest.TestCase):
     def test_commit_without_approval_fires(self):
