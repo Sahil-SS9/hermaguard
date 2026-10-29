@@ -6,6 +6,18 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — reviewer method: unreachable gates and end-state impact
+
+- **Edge Case Hunter** gains an *Unreachable gates* edge class: a
+  skip/wait/admission condition must be able to become true in the state the
+  system is actually in when the gate runs. Field miss: a review weighed a
+  requeue gate's probe cost but not that it only passed on a "ready" state the
+  target never held at boot, so parked work was skipped forever.
+- **Adversarial Reviewer** finding bar: impact must be graded after tracing the
+  affected entity to its end state ("lost" vs "delayed and self-healing").
+  Field miss: a finding claimed a retry was burned without an attempt when the
+  work item was durably back in the queue for the next cycle.
+
 ### Added — skill-creation trajectory audit (Phase 1 of skill-safety-audit)
 
 - **Trajectory audit** (`hermaguard-trajectory`): deterministic scan of a

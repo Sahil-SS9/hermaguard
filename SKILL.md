@@ -247,6 +247,7 @@ Context: Only the actual diff hunks — not full files. If pre-scan ran, use tho
 - **Async**: promise rejection unhandled, race between async operations, partial success states
 - **Concurrency**: shared mutable state, non-atomic read-modify-write
 - **Degenerate handlers**: empty catch/then blocks, no-op error paths, fallthrough switch cases with identical bodies, placeholder return values that mask failures
+- **Unreachable gates**: a skip/wait/admission condition that can never become true in the system's normal states. Enumerate every value the gate's input can take (each enum/state, idle vs active, cold start vs warm) and confirm the "proceed" branch is reachable for the state the system is actually in when the gate runs. A gate that only passes in a state the system never reaches at that moment parks work forever
 
 **Output contract:** Return ONLY a JSON array. Each object has exactly these 4 fields:
 ```json
@@ -291,6 +292,7 @@ Context: Entire file — you need to understand what the change sits within. Pre
 1. What can go wrong? (concrete scenario, not hypothetical)
 2. Why is this code vulnerable? (cite specific file and lines)
 3. Impact — what breaks and how badly? (data loss > outage > degraded UX)
+   Trace the affected entity (record, job, request) to its END state before grading: is the outcome permanent, or delayed and self-healing on the next normal cycle? "Lost" and "delayed" are different severities; never claim the former without following the entity past the failure point.
 4. Recommendation — specific fix with code reference
 
 **Verification bar (the evidence rule):** a finding's confidence is only as
