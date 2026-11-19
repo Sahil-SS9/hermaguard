@@ -158,16 +158,30 @@ Run it yourself to get precision/recall/F1 for your harness.
 
 ## Integration with CI
 
-Copy `.github/workflows/hermaguard.yml` using the provided action:
+The Action lives in a subdirectory, so reference it by path and pin it to a full commit SHA you have reviewed (there is no floating `v2` tag, and a SHA cannot be moved under you):
 
 ```yaml
-- uses: Sahil-SS9/hermaguard@v2
-  with:
-    block_on: CRITICAL  # or HIGH or never
-    comment_mode: inline
+# .github/workflows/hermaguard.yml
+name: HermaGuard
+on:
+  pull_request:          # NOT pull_request_target - see the warning below
+permissions:
+  contents: read
+  pull-requests: write   # only needed to post the summary comment
+jobs:
+  prescan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Sahil-SS9/hermaguard/integrations/github-action@<full-commit-sha>
+        with:
+          block_on: CRITICAL  # CRITICAL, HIGH or never
 ```
 
-Pre-scan runs automatically. Full LLM review runs interactively (`/hermaguard`).
+Replace `<full-commit-sha>` with the 40-character commit you reviewed.
+
+**Do not run this on `pull_request_target`.** That trigger gives code from a fork access to your secrets and a write token. Plain `pull_request` runs fork code with a read-only token, which is what a scanner needs.
+
+CI runs the deterministic pre-scan only. The full adversarial review is interactive (`/hermaguard`); the Action never calls an LLM.
 
 ## Why it exists
 

@@ -356,6 +356,17 @@ def find_tool(name: str) -> str | None:
     return None
 
 
+def read_files_from(path: str) -> list:
+    """Read a file list from PATH. NUL-delimited when the file contains a NUL
+    byte (git diff -z), otherwise newline-delimited. Names are returned
+    exactly as written: no comma splitting, no trimming of inner whitespace."""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    sep = b"\0" if b"\0" in data else b"\n"
+    names = [n.decode("utf-8", "surrogateescape") for n in data.split(sep)]
+    return [n for n in names if n]
+
+
 def split_files(files_arg: str) -> list:
     """Split comma- or newline-separated file paths."""
     # Try comma-separated first, then newline-separated (from git diff --name-only)
@@ -651,6 +662,11 @@ def main():
         "--diff",
         help="Newline-separated file list, e.g. \"$(git diff --name-only)\". Alias for --files."
     )
+    src.add_argument(
+        "--files-from", dest="files_from", metavar="PATH",
+        help="Read the file list from PATH (NUL- or newline-delimited). Names are used "
+             "exactly as written, so spaces, commas and shell metacharacters are safe."
+    )
     parser.add_argument(
         "--output", required=True,
         help="Path to write JSON output (e.g., /tmp/hermaguard/prescan-abc123.json)"
@@ -668,8 +684,11 @@ def main():
     )
     args = parser.parse_args()
 
-    files_arg = args.files if args.files is not None else (args.diff or "")
-    files = split_files(files_arg)
+    if args.files_from is not None:
+        files = read_files_from(args.files_from)
+    else:
+        files_arg = args.files if args.files is not None else (args.diff or "")
+        files = split_files(files_arg)
     if not files:
         output = {
             "findings": [],
