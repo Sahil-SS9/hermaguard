@@ -57,4 +57,7 @@ jobs:
       - name: Run actionlint on all workflow files
         run: |
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -shellcheck= .github/workflows/ci.yml integrations/github-action/action.yml
+          # actionlint understands workflow files only. The composite action
+          # (integrations/github-action/action.yml) is a different file type and is
+          # checked by test_action.py (no expression interpolation inside run: blocks).
+          ./actionlint -shellcheck= .github/workflows/ci.yml
