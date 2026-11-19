@@ -1,0 +1,5 @@
+{
+  "scorer_version": 1,
+  "frozen": true,
+  "note": "These five reference results were produced and scored under the original keyword scorer (100% recall, 90% mean precision). They carry no `classes`, `line` or `symbol`, so scorers 2 and 3 cannot credit them. They are kept as-is and scored under version 1; re-run a harness to get results scorer 3 can grade."
+}
