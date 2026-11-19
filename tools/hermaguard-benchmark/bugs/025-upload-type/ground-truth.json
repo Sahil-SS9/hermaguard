@@ -12,7 +12,12 @@
       "classes": [
         "CWE-434",
         "CWE-22"
-      ]
+      ],
+      "symbol": "save_upload",
+      "region": {
+        "start": 4,
+        "end": 5
+      }
     }
   ]
 }

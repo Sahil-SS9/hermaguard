@@ -1,0 +1,9 @@
+{
+  "title": "joined path that is contained before use",
+  "description": "Looks like path traversal; the resolved path is checked to stay inside the base directory.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "lookalike",
+  "findings": []
+}

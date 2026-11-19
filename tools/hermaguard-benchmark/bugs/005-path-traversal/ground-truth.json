@@ -4,6 +4,19 @@
   "severity": "HIGH",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "filename joined into path without traversal check", "description": "Arbitrary file read via ../ traversal", "severity": "HIGH", "classes": ["CWE-22"]}
+    {
+      "file": "app.py",
+      "trigger": "filename joined into path without traversal check",
+      "description": "Arbitrary file read via ../ traversal",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-22"
+      ],
+      "symbol": "read_doc",
+      "region": {
+        "start": 2,
+        "end": 2
+      }
+    }
   ]
 }

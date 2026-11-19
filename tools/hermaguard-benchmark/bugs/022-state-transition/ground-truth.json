@@ -12,7 +12,12 @@
       "classes": [
         "HG-STATE",
         "HG-ASYNC"
-      ]
+      ],
+      "symbol": "refresh",
+      "region": {
+        "start": 2,
+        "end": 7
+      }
     }
   ]
 }

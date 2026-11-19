@@ -11,7 +11,12 @@
       "severity": "MEDIUM",
       "classes": [
         "CWE-400"
-      ]
+      ],
+      "symbol": "parse",
+      "region": {
+        "start": 3,
+        "end": 7
+      }
     }
   ]
 }

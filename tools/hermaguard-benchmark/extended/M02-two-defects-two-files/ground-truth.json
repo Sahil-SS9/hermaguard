@@ -1,0 +1,37 @@
+{
+  "title": "Two independent defects in two files",
+  "description": "A SQL injection in db.py and a missing authentication check in web.py. Both must be found; finding only one is partial.",
+  "kind": "bug",
+  "severity": "CRITICAL",
+  "category": "security",
+  "findings": [
+    {
+      "file": "db.py",
+      "trigger": "string-built query",
+      "description": "SQL injection in find_order",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-89"
+      ],
+      "symbol": "find_order",
+      "region": {
+        "start": 2,
+        "end": 2
+      }
+    },
+    {
+      "file": "web.py",
+      "trigger": "no authentication",
+      "description": "export_all is reachable unauthenticated",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-306"
+      ],
+      "symbol": "export_all",
+      "region": {
+        "start": 2,
+        "end": 3
+      }
+    }
+  ]
+}

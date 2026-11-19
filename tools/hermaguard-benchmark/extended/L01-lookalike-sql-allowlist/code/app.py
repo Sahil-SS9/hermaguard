@@ -1,0 +1,6 @@
+ALLOWED_TABLES = {"users", "orders"}
+
+def count_rows(conn, table: str) -> int:
+    if table not in ALLOWED_TABLES:
+        raise ValueError("unknown table")
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]

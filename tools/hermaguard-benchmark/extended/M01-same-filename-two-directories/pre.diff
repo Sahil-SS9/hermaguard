@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/billing/app.py
+@@ -0,0 +1,4 @@
++def refund(account, amount: int):
++    # amount is never checked: a negative value adds money
++    account.balance -= amount
++    return account.balance
+--- /dev/null
++++ b/reports/app.py
+@@ -0,0 +1,2 @@
++def refund_report(rows):
++    return sum(r.amount for r in rows if r.amount > 0)

@@ -11,7 +11,12 @@
       "severity": "MEDIUM",
       "classes": [
         "CWE-200"
-      ]
+      ],
+      "symbol": "handler",
+      "region": {
+        "start": 4,
+        "end": 5
+      }
     }
   ]
 }

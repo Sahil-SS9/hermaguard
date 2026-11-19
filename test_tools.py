@@ -446,7 +446,7 @@ class TestBenchmark(unittest.TestCase):
             ],
             "summary": {"total": 1},
         }
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertEqual(score["precision_pct"], 100.0)
         self.assertEqual(score["recall_pct"], 100.0)
         self.assertEqual(score["f1_score"], 100.0)
@@ -472,7 +472,7 @@ class TestBenchmark(unittest.TestCase):
             ],
             "summary": {"total": 1},
         }
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertEqual(score["precision_pct"], 0.0)
         self.assertEqual(score["recall_pct"], 0.0)
         self.assertEqual(score["f1_score"], 0.0)
@@ -498,7 +498,7 @@ class TestBenchmark(unittest.TestCase):
             ],
             "summary": {"total": 1},
         }
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertEqual(score["precision_pct"], 100.0)
         self.assertEqual(score["recall_pct"], 50.0)
         self.assertEqual(score["f1_score"], 66.7)
@@ -523,7 +523,7 @@ class TestBenchmark(unittest.TestCase):
             ],
             "summary": {"total": 1},
         }
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertEqual(score["precision_pct"], 100.0)  # still a match
         self.assertEqual(score["recall_pct"], 100.0)
         self.assertEqual(score["severity_accuracy_pct"], 0.0)  # severity wrong
@@ -533,7 +533,7 @@ class TestBenchmark(unittest.TestCase):
         bug = {"id": "test-005", "title": "Empty", "severity": "LOW", "category": "style",
                "expected_findings": []}
         run_info = {"run_ok": True, "findings": [], "summary": {"total": 0}}
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertEqual(score["precision_pct"], 0.0)
         self.assertEqual(score["recall_pct"], 0.0)
         self.assertEqual(score["f1_score"], 0.0)
@@ -543,7 +543,7 @@ class TestBenchmark(unittest.TestCase):
         bug = {"id": "test-006", "title": "Failed Run", "severity": "HIGH", "category": "security",
                "expected_findings": [{"file": "x.py", "trigger": "bug", "description": "bug", "severity": "HIGH"}]}
         run_info = {"run_ok": False, "error": "timeout", "findings": [], "summary": {}}
-        score = self.mod.score_run(bug, run_info)
+        score = self.mod.score_run(bug, run_info, scorer_version=2)
         self.assertFalse(score["run_ok"])
         self.assertEqual(score["run_error"], "timeout")
         self.assertEqual(score["precision_pct"], 0.0)

@@ -1,0 +1,23 @@
+{
+  "title": "Negative refund in billing/app.py (reports/app.py is fine)",
+  "description": "Two files are both named app.py. Only billing/app.py is defective. A basename match would credit a finding in the wrong one.",
+  "kind": "bug",
+  "severity": "HIGH",
+  "category": "security",
+  "findings": [
+    {
+      "file": "billing/app.py",
+      "trigger": "negative amount accepted",
+      "description": "refund() subtracts an unchecked, possibly negative amount",
+      "severity": "HIGH",
+      "classes": [
+        "CWE-20"
+      ],
+      "symbol": "refund",
+      "region": {
+        "start": 2,
+        "end": 3
+      }
+    }
+  ]
+}

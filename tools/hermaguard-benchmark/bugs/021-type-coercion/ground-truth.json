@@ -11,7 +11,12 @@
       "severity": "LOW",
       "classes": [
         "CWE-20"
-      ]
+      ],
+      "symbol": "canEdit",
+      "region": {
+        "start": 2,
+        "end": 2
+      }
     }
   ]
 }

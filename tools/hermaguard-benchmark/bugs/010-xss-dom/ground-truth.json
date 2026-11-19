@@ -11,7 +11,12 @@
       "severity": "HIGH",
       "classes": [
         "CWE-79"
-      ]
+      ],
+      "symbol": "renderResults",
+      "region": {
+        "start": 3,
+        "end": 4
+      }
     }
   ]
 }

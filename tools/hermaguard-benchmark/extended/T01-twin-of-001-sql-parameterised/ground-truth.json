@@ -1,0 +1,10 @@
+{
+  "title": "001 repaired: parameterised query",
+  "description": "Same function as 001-sql-injection with the value passed as a bound parameter.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "repaired_twin",
+  "twin_of": "001-sql-injection",
+  "findings": []
+}

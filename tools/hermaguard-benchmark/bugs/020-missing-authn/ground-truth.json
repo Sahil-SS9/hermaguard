@@ -12,7 +12,12 @@
       "classes": [
         "CWE-306",
         "CWE-287"
-      ]
+      ],
+      "symbol": "reset_password",
+      "region": {
+        "start": 2,
+        "end": 4
+      }
     }
   ]
 }

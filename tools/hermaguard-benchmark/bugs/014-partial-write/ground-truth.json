@@ -12,7 +12,12 @@
       "classes": [
         "HG-PARTIAL-WRITE",
         "CWE-362"
-      ]
+      ],
+      "symbol": "transfer",
+      "region": {
+        "start": 2,
+        "end": 4
+      }
     }
   ]
 }

@@ -12,7 +12,12 @@
       "classes": [
         "CWE-862",
         "CWE-269"
-      ]
+      ],
+      "symbol": "delete_user",
+      "region": {
+        "start": 2,
+        "end": 4
+      }
     }
   ]
 }

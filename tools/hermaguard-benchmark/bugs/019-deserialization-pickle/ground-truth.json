@@ -12,7 +12,12 @@
       "classes": [
         "CWE-502",
         "CWE-94"
-      ]
+      ],
+      "symbol": "load_state",
+      "region": {
+        "start": 4,
+        "end": 4
+      }
     }
   ]
 }

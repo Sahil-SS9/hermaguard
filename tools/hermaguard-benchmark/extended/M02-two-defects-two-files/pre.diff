@@ -1,0 +1,11 @@
+--- /dev/null
++++ b/db.py
+@@ -0,0 +1,2 @@
++def find_order(conn, ref: str):
++    return conn.execute("SELECT * FROM orders WHERE ref = '" + ref + "'").fetchall()
+--- /dev/null
++++ b/web.py
+@@ -0,0 +1,3 @@
++def export_all(request, db):
++    # no authentication of the caller
++    return db.dump_orders()

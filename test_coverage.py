@@ -297,7 +297,7 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         run = {"run_ok": True, "findings": [
             {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89", "CWE-20"]},
         ]}
-        s = self.bm.score_run(self.bug, run)
+        s = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertEqual(s["true_positives"], 1)
         self.assertEqual(s["false_positives"], 0)
         self.assertEqual(s["match_modes"]["class"], 1)
@@ -306,7 +306,7 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         run = {"run_ok": True, "findings": [
             {"id": "HG-1", "file": "other.py", "severity": "HIGH", "classes": ["CWE-89"]},
         ]}
-        s = self.bm.score_run(self.bug, run)
+        s = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertEqual(s["true_positives"], 0)
         self.assertEqual(s["false_negatives"], 1)
 
@@ -314,7 +314,7 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         run = {"run_ok": True, "findings": [
             {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-22"]},
         ]}
-        s = self.bm.score_run(self.bug, run)
+        s = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertEqual(s["true_positives"], 0)
 
     def test_deterministic_identical_inputs(self):
@@ -322,8 +322,8 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
             {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89"]},
             {"id": "HG-2", "file": "app.py", "severity": "MEDIUM", "classes": ["CWE-22"]},
         ]}
-        r1 = self.bm.score_run(self.bug, run)
-        r2 = self.bm.score_run(self.bug, run)
+        r1 = self.bm.score_run(self.bug, run, scorer_version=2)
+        r2 = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertEqual(r1["matches"], r2["matches"])
         self.assertEqual((r1["precision_pct"], r1["recall_pct"]), (r2["precision_pct"], r2["recall_pct"]))
 
@@ -338,14 +338,14 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
             {"id": "HG-1", "file": "app.py", "severity": "CRITICAL",
              "trigger_condition": "sql injection unparameterised query", "consequence": "data breach"},
         ]}
-        s = self.bm.score_run(bug_legacy, run)
+        s = self.bm.score_run(bug_legacy, run, scorer_version=2)
         self.assertEqual(s["true_positives"], 1)
         self.assertEqual(s["match_modes"]["keyword"], 1)
 
     def test_crashed_run_never_scored_ok(self):
         # Regression: a result file with an error key must not score as OK
         run = {"error": "agent crashed", "findings": []}
-        s = self.bm.score_run(self.bug, run)
+        s = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertFalse(s["run_ok"])
 
     def test_missing_run_ok_flag_does_not_crash(self):
@@ -354,7 +354,7 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         run = {"findings": [
             {"id": "HG-1", "file": "app.py", "severity": "HIGH", "classes": ["CWE-89"]},
         ]}
-        s = self.bm.score_run(self.bug, run)
+        s = self.bm.score_run(self.bug, run, scorer_version=2)
         self.assertTrue(s["run_ok"])  # defaults to completed
         self.assertEqual(s["true_positives"], 1)
 
@@ -368,12 +368,12 @@ class TestBenchmarkDeterministicScoring(unittest.TestCase):
         exp = gt["findings"][0]
         run = {"findings": [{"id": "HG-1", "file": exp["file"],
                              "severity": exp["severity"], "classes": exp["classes"]}]}
-        s = self.bm.score_run(bug, run)
+        s = self.bm.score_run(bug, run, scorer_version=2)
         self.assertEqual((s["precision_pct"], s["recall_pct"], s["f1_score"]), (100.0, 100.0, 100.0))
         # Wrong-class run -> 0
         run2 = {"findings": [{"id": "HG-1", "file": exp["file"],
                               "severity": exp["severity"], "classes": ["CWE-79"]}]}
-        s2 = self.bm.score_run(bug, run2)
+        s2 = self.bm.score_run(bug, run2, scorer_version=2)
         self.assertEqual((s2["precision_pct"], s2["recall_pct"], s2["f1_score"]), (0.0, 0.0, 0.0))
 
     def test_corpus_integrity(self):

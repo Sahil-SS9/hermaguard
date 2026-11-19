@@ -4,6 +4,19 @@
   "severity": "CRITICAL",
   "category": "security",
   "findings": [
-    {"file": "app.py", "trigger": "user host concatenated into shell command", "description": "OS command injection via shell=True with unescaped input", "severity": "CRITICAL", "classes": ["CWE-78"]}
+    {
+      "file": "app.py",
+      "trigger": "user host concatenated into shell command",
+      "description": "OS command injection via shell=True with unescaped input",
+      "severity": "CRITICAL",
+      "classes": [
+        "CWE-78"
+      ],
+      "symbol": "ping_host",
+      "region": {
+        "start": 4,
+        "end": 4
+      }
+    }
   ]
 }

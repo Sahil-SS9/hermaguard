@@ -1,0 +1,10 @@
+{
+  "title": "f-string SQL with an allow-listed table name",
+  "description": "Looks like SQL injection; the interpolated name is checked against a constant allow-list first.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "lookalike",
+  "twin_of": null,
+  "findings": []
+}

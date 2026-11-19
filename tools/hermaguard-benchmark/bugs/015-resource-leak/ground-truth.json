@@ -12,7 +12,12 @@
       "classes": [
         "CWE-404",
         "CWE-754"
-      ]
+      ],
+      "symbol": "read_config",
+      "region": {
+        "start": 2,
+        "end": 4
+      }
     }
   ]
 }

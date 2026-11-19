@@ -1,0 +1,13 @@
+--- /dev/null
++++ b/app.py
+@@ -0,0 +1,10 @@
++import os
++
++BASE = os.path.realpath("/var/docs")
++
++def read_doc(name: str) -> str:
++    path = os.path.realpath(os.path.join(BASE, name))
++    if os.path.commonpath([BASE, path]) != BASE:
++        raise PermissionError("outside docs directory")
++    with open(path) as f:
++        return f.read()

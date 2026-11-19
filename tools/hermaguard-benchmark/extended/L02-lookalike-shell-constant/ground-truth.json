@@ -1,0 +1,9 @@
+{
+  "title": "shell=True on a constant command",
+  "description": "Looks like command injection; the command string is a constant with no caller input.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "lookalike",
+  "findings": []
+}

@@ -147,14 +147,14 @@ python3 -m unittest test_tools.py test_coverage.py test_loop.py \
 
 ## Benchmark
 
-Score-only: your harness emits a `--json` report per bug, this scores it against a seeded corpus's ground truth. It does not run the skill itself.
+Score-only: your harness emits a `--json` report per case, this scores it against a seeded corpus's ground truth. It does not run the skill itself.
 
 ```bash
 python3 tools/hermaguard-benchmark/benchmark.py \
   --bugs tools/hermaguard-benchmark/bugs --results tools/hermaguard-benchmark/results
 ```
 
-Run it yourself to get precision/recall/F1 for your harness.
+The default scorer (version 3) requires the right class in the right file *and* place (exact repo-relative path plus a symbol or line region), so a correct class in a different `app.py` earns nothing. The corpus has 25 defect cases plus an `extended/` set of clean lookalikes, repaired twins and multi-file cases, so a reviewer that flags everything is penalised. Results report defects found / missed, clean code wrongly accused and incomplete runs separately; an empty or interrupted run is incomplete, never a clean result. Older scorers stay available with `--scorer-version`. Details: `tools/hermaguard-benchmark/README.md`.
 
 ## Integration with CI
 

@@ -1,0 +1,10 @@
+{
+  "title": "014 repaired: both updates in one transaction",
+  "description": "Same function as 014-partial-write with both updates inside one transaction.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "repaired_twin",
+  "twin_of": "014-partial-write",
+  "findings": []
+}

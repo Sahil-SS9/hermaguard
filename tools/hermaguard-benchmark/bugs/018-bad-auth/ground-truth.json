@@ -12,7 +12,12 @@
       "classes": [
         "CWE-287",
         "CWE-200"
-      ]
+      ],
+      "symbol": "verify",
+      "region": {
+        "start": 4,
+        "end": 6
+      }
     }
   ]
 }

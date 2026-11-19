@@ -12,7 +12,12 @@
       "classes": [
         "HG-ASYNC",
         "CWE-754"
-      ]
+      ],
+      "symbol": "loadProfile",
+      "region": {
+        "start": 2,
+        "end": 3
+      }
     }
   ]
 }

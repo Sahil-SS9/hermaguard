@@ -79,6 +79,35 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Added `references/policy-examples.md` (12 worked cases) and `test_policy.py`,
   which pins the skill text to them.
 
+### Changed - the benchmark scores the right thing (scorer version 3)
+
+- **Location is required.** A finding now matches only with a class in common AND the
+  exact normalised repo-relative path AND the expected symbol, line region or outcome.
+  Previously a basename match was enough and a blank file on either side passed, so the
+  right class in the wrong `app.py` earned credit. Line numbers may move
+  (`line_tolerance`); a different file never matches.
+- **Controls.** New `extended/` corpus: 4 clean lookalikes, 4 repaired twins of corpus
+  bugs, a same-filename-in-two-directories defect and a two-defect case. The original 25
+  cases (one finding each) are unchanged apart from added `symbol` / `region` fields.
+- **Incomplete is not clean.** No output, an error, `run_ok: false`, an interrupted
+  status, or zero findings with no completed checks is incomplete (ungraded), never a
+  true negative.
+- **Separate counts.** Defects found / missed / in incomplete runs (always summing to the
+  expected total), extra and duplicate findings, clean cases wrongly accused, incomplete
+  runs, and recall over both all and graded cases. Usage (time, turns, cost) is reported on
+  its own and never scored. Two reports of one root cause are one finding plus a duplicate.
+- **Versions.** Every score records its scorer version. Version 1 (original keyword) and 2
+  (class + basename) are frozen and selectable with `--scorer-version`; the committed
+  reference results are pinned to version 1 by `results/MANIFEST.json`, so their published
+  numbers are reproduced unchanged. The new default is version 3, so results without a
+  `scorer_version` field are now scored strictly - pass `--scorer-version 2` to reproduce
+  old numbers.
+- Fixed: the HTML report raised `KeyError: 'score'` for any class-mode match, so a report
+  could not be generated for a run that found anything.
+- `--lint-corpus` lists ground truth that scorer 3 cannot grade.
+- Note for the README's reference run: 100% recall was measured over the 5 of 25 cases
+  that were run. It is now reported as 5 found / 0 missed / 20 not run.
+
 ### Removed
 
 - Unimplemented Action inputs `comment_mode`, `min_severity`, `hermaguard_args`,

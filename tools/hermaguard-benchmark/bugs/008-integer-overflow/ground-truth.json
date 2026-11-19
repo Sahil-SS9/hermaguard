@@ -12,7 +12,12 @@
       "classes": [
         "CWE-190",
         "CWE-20"
-      ]
+      ],
+      "symbol": "order_total",
+      "region": {
+        "start": 3,
+        "end": 3
+      }
     }
   ]
 }

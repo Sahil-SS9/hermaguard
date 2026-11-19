@@ -11,7 +11,12 @@
       "severity": "CRITICAL",
       "classes": [
         "CWE-798"
-      ]
+      ],
+      "symbol": "PAYMENT_KEY",
+      "region": {
+        "start": 5,
+        "end": 5
+      }
     }
   ]
 }

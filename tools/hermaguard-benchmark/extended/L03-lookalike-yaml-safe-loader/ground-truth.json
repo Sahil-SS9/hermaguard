@@ -1,0 +1,9 @@
+{
+  "title": "yaml.load with SafeLoader",
+  "description": "Looks like unsafe YAML deserialisation; the safe loader is passed explicitly.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "lookalike",
+  "findings": []
+}

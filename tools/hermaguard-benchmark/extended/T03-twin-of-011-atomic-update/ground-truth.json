@@ -1,0 +1,10 @@
+{
+  "title": "011 repaired: single conditional UPDATE",
+  "description": "Same function as 011-race-balance, with the check and the deduction in one atomic statement.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "repaired_twin",
+  "twin_of": "011-race-balance",
+  "findings": []
+}

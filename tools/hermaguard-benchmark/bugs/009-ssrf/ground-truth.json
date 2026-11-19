@@ -12,7 +12,12 @@
       "classes": [
         "CWE-918",
         "CWE-20"
-      ]
+      ],
+      "symbol": "send_webhook",
+      "region": {
+        "start": 5,
+        "end": 5
+      }
     }
   ]
 }

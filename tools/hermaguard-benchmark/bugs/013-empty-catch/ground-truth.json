@@ -12,7 +12,12 @@
       "classes": [
         "HG-DEGENERATE",
         "CWE-754"
-      ]
+      ],
+      "symbol": "process_payment",
+      "region": {
+        "start": 4,
+        "end": 5
+      }
     }
   ]
 }

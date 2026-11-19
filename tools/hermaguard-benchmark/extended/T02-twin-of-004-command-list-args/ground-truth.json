@@ -1,0 +1,10 @@
+{
+  "title": "004 repaired: argument list, no shell",
+  "description": "Same function as 004-command-injection with an argument list and no shell.",
+  "kind": "clean",
+  "severity": "NONE",
+  "category": "control",
+  "control_type": "repaired_twin",
+  "twin_of": "004-command-injection",
+  "findings": []
+}
