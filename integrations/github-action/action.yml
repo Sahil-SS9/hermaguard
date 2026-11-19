@@ -1,27 +1,22 @@
 name: HermaGuard Code Review
-description: Run adversarial code review on pull requests
+description: >
+  Deterministic pre-scan of the changed files. Reports one of four honest states
+  (complete, partial, unavailable, out_of_scope) and never calls an LLM.
 
 inputs:
   block_on:
-    description: Minimum severity to block merge (CRITICAL, HIGH, or never)
+    description: >
+      Severity that fails the check: CRITICAL, HIGH or never. With CRITICAL or
+      HIGH, a partial or unavailable scan also fails - it is not a pass.
     default: 'CRITICAL'
-  comment_mode:
-    description: How to post findings (inline on diff lines, or summary comment)
-    default: 'inline'
-  min_severity:
-    description: Minimum severity to report (LOW reports everything)
-    default: 'MEDIUM'
   max_files:
-    description: Skip if more than this many files changed
+    description: If more in-scope files than this changed, none are scanned and the result is partial.
     default: '50'
   skip_patterns:
-    description: File patterns to skip (newline-separated)
-    default: '*.test.*\n*.spec.*\n*.md\n*.json\n*.yaml'
-  hermaguard_args:
-    description: Additional arguments for hermaguard
-    default: ''
+    description: Comma- or newline-separated glob patterns to leave out of the scan.
+    default: '*.test.*,*.spec.*,*.md,*.json,*.yaml'
   prescan_enabled:
-    description: Run deterministic pre-scan before LLM review
+    description: Run the deterministic pre-scan. When false, the check reports that nothing was scanned.
     default: 'true'
 
 runs:
@@ -40,8 +35,11 @@ runs:
     - name: Install optional linters for the pre-scan
       shell: bash
       run: |
-        # Best effort: the scanner reports which tools were missing.
-        python3 -m pip install bandit ruff semgrep >/dev/null 2>&1 || true
+        # Best effort, but never silent: the scanner also reports which tools were missing.
+        python3 -m pip install bandit ruff semgrep >/dev/null 2>&1 \
+          || echo "::warning::could not install bandit/ruff/semgrep; the scan will be partial"
+        npm install -g eslint >/dev/null 2>&1 \
+          || echo "::warning::could not install eslint; JS/TS files will not be examined by it"
 
     - name: Select changed files
       id: files
@@ -62,75 +60,35 @@ runs:
       shell: bash
       run: |
         mkdir -p "$RUNNER_TEMP/hermaguard"
+        # A scanner failure is recorded and reported, not hidden: the report step
+        # turns a missing or invalid report into the `unavailable` state.
+        set +e
         python3 "$GITHUB_ACTION_PATH/../../tools/hermaguard-prescan/hermaguard-prescan.py" \
           --files-from "$RUNNER_TEMP/hermaguard/files.list" \
-          --output "$RUNNER_TEMP/hermaguard/prescan.json" 2>&1 || true
+          --output "$RUNNER_TEMP/hermaguard/prescan.json" \
+          >"$RUNNER_TEMP/hermaguard/scan.log" 2>&1
+        echo "$?" >"$RUNNER_TEMP/hermaguard/scan_exit"
+        cat "$RUNNER_TEMP/hermaguard/scan.log"
+        exit 0
 
-    - name: Run HermaGuard
-      if: ${{ steps.files.outputs.scan_count != '0' }}
-      id: hermaguard
+    - name: Summarise result and decide
+      id: report
+      if: ${{ always() }}
       shell: bash
+      env:
+        BLOCK_ON: ${{ inputs.block_on }}
+        PRESCAN_ENABLED: ${{ inputs.prescan_enabled }}
       run: |
-        echo "Running HermaGuard review..."
-        # hermaguard is invoked via claude/codex as a skill
-        # This step depends on the deployment environment
-        # For CI, we use the json output mode
-        echo "NOTE: Full HermaGuard LLM review requires an active Claude/Codex session."
-        echo "See: https://github.com/Sahil-SS9/hermaguard for setup instructions."
-        echo "Pre-scan output available at $RUNNER_TEMP/hermaguard/prescan.json"
+        python3 "$GITHUB_ACTION_PATH/hg_action.py" report
 
-    - name: Post findings as PR comments
-      if: ${{ steps.files.outputs.changed_count != '0' && always() }}
+    - name: Post summary as PR comment
+      if: ${{ github.event.pull_request && always() }}
+      continue-on-error: true
       uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
-          let body = '';
-
-          // Use pre-scan output as the primary structured findings in CI
-          // Full HermaGuard (LLM review) runs interactively; CI uses pre-scan
-          try {
-            const prescan = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/hermaguard/prescan.json`, 'utf8'));
-            const stats = prescan.stats || {};
-
-            body = `## 🔍 HermaGuard Pre-Scan
-
-          **${stats.total_findings || 0} findings** from ${stats.tools_run?.join(', ') || 'no tools'}
-
-          `;
-
-            if (prescan.findings && prescan.findings.length > 0) {
-              // Group by severity
-              const groups = {};
-              for (const f of prescan.findings) {
-                const sev = f.severity || 'LOW';
-                if (!groups[sev]) groups[sev] = [];
-                if (groups[sev].length < 10) { // cap per severity
-                  groups[sev].push(`- \`${f.file}:${f.line}\` — **${f.tool}** ${f.message}`);
-                }
-              }
-
-              for (const [sev, items] of Object.entries(groups)) {
-                body += `### ${sev}\n${items.join('\n')}\n\n`;
-              }
-
-              if (prescan.findings.length > 30) {
-                body += `\n*${prescan.findings.length - 30} more findings truncated. See full output.*\n`;
-              }
-            } else {
-              body += '✅ No deterministic issues found.\n';
-            }
-
-            body += `\n> Run \`/hermaguard\` for full adversarial LLM review.`;
-          } catch (e) {
-            body = `## 🔍 HermaGuard
-
-          Pre-scan unavailable: ${e.message}
-
-          Run \`/hermaguard\` locally for adversarial review.`;
-          }
-
-          // Post comment
+          const body = fs.readFileSync(`${process.env.RUNNER_TEMP}/hermaguard/comment.md`, 'utf8');
           await github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
@@ -138,27 +96,8 @@ runs:
             body: body
           });
 
-    - name: Block on critical findings (optional)
-      if: ${{ inputs.block_on != 'never' && steps.prescan.outcome == 'success' && always() }}
+    - name: Enforce decision
+      if: ${{ always() }}
       shell: bash
-      env:
-        BLOCK_ON: ${{ inputs.block_on }}
       run: |
-        REPORT="$RUNNER_TEMP/hermaguard/prescan.json"
-        if [ -f "$REPORT" ]; then
-          python3 - "$REPORT" "$BLOCK_ON" <<'PY'
-        import json, sys
-        report, block_on = sys.argv[1], sys.argv[2]
-        data = json.load(open(report))
-        sev = [f.get("severity") for f in data.get("findings", [])]
-        crit = sev.count("CRITICAL")
-        high = crit + sev.count("HIGH")
-        if block_on == "CRITICAL" and crit:
-            print(f"BLOCKING: {crit} CRITICAL findings detected.")
-            sys.exit(1)
-        if block_on == "HIGH" and high:
-            print(f"BLOCKING: {high} CRITICAL+HIGH findings detected.")
-            sys.exit(1)
-        PY
-        fi
-        echo "No blocking findings."
+        python3 "$GITHUB_ACTION_PATH/hg_action.py" enforce

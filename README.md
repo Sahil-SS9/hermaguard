@@ -181,6 +181,8 @@ Replace `<full-commit-sha>` with the 40-character commit you reviewed.
 
 **Do not run this on `pull_request_target`.** That trigger gives code from a fork access to your secrets and a write token. Plain `pull_request` runs fork code with a read-only token, which is what a scanner needs.
 
+The check reports one of four states: `complete`, `partial`, `unavailable` or `out_of_scope`. "No issues found" appears only for `complete`. With `block_on: CRITICAL` or `HIGH`, a partial or unavailable scan fails the check, and a change with nothing the scanner covers passes but is labelled "not reviewed". Note that the bundled scanners report `HIGH`/`MEDIUM`/`LOW` and none currently reports `CRITICAL`, so use `block_on: HIGH` if you want findings to fail the check.
+
 CI runs the deterministic pre-scan only. The full adversarial review is interactive (`/hermaguard`); the Action never calls an LLM.
 
 ## Why it exists

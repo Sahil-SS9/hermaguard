@@ -889,19 +889,22 @@ class TestPrescanIssue1Takeover(unittest.TestCase):
         def partial_find(name):
             return "/safe/bin/ruff" if name == "ruff" else None
 
-        with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
-             mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
-            partial = self.mod.run_prescan(
-                ["sample.py"],
-                restrict_tools=["bandit", "ruff"],
-            )
+        with tempfile.TemporaryDirectory() as d:
+            sample = os.path.join(d, "sample.py")
+            Path(sample).write_text("x = 1\n")
+            with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
+                 mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
+                partial = self.mod.run_prescan(
+                    [sample],
+                    restrict_tools=["bandit", "ruff"],
+                )
 
-        with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
-             mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
-            complete = self.mod.run_prescan(
-                ["sample.py"],
-                restrict_tools=["ruff"],
-            )
+            with mock.patch.object(self.mod, "find_tool", side_effect=partial_find), \
+                 mock.patch.object(self.mod.subprocess, "run", return_value=ruff_result):
+                complete = self.mod.run_prescan(
+                    [sample],
+                    restrict_tools=["ruff"],
+                )
 
         self.assertFalse(partial["stats"]["scan_complete"])
         self.assertIn("bandit", partial["stats"]["tools_skipped"])
@@ -964,8 +967,11 @@ class TestPrescanIssue1Takeover(unittest.TestCase):
             return "/safe/bin/semgrep" if name == "semgrep" else None
 
         with mock.patch.object(self.mod, "find_tool", side_effect=semgrep_only), \
-             mock.patch.object(self.mod.subprocess, "run", return_value=failed):
-            output = self.mod.run_prescan(["sample.unknown"])
+             mock.patch.object(self.mod.subprocess, "run", return_value=failed), \
+             tempfile.TemporaryDirectory() as d:
+            sample = os.path.join(d, "sample.unknown")
+            Path(sample).write_text("x\n")
+            output = self.mod.run_prescan([sample])
 
         self.assertEqual(output["stats"]["tools_run"], [])
         self.assertFalse(output["stats"]["scan_complete"])

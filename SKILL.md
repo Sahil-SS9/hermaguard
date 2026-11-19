@@ -103,7 +103,7 @@ Implement → Verify (tests pass) → Simplify → Hermaguard → Fix (coding ag
 
 ### Rationale for 3 agents (not 7 like the simplifier swarm)
 
-The simplifier needs many narrow agents because it's mutating code — each change type has its own risk profile and failure mode. Bug hunting is different: it's a pure analysis task. More agents = more duplicate findings, not more coverage. Three distinct perspectives (exhaustive paths, adversarial attack, blast radius) give ~95% coverage without redundant cross-talk.
+The simplifier needs many narrow agents because it's mutating code — each change type has its own risk profile and failure mode. Bug hunting is different: it's a pure analysis task. More agents = more duplicate findings, not more coverage. Three distinct perspectives (exhaustive paths, adversarial attack, blast radius) cover different failure modes without redundant cross-talk. This is a design rationale, not a measured coverage figure.
 
 ### Pre-Scan rationale
 
@@ -610,11 +610,11 @@ No fixes applied. Handing findings to a coding agent.
 - **Don't guard code you don't understand.** If you can't trace the full call graph, mark findings as lower confidence.
 - **Don't fabricate findings.** An empty agent report IS valid. False positives erode trust faster than missed bugs.
 - **Don't fight the blast radius agent.** If it says "safe to revert," believe it unless you have concrete contrary evidence.
-- **Don't let the adversarial agent go soft.** If it returns "no findings," ask it to re-examine — adversarial reviewers should ALWAYS find something worth noting, even if LOW severity.
+- **Accept an evidenced zero.** Ask for another pass only when you can name an unchecked part of the diff or evidence that contradicts the conclusion. An empty result from completed checks is valid; missing input or an unfinished check is not a clean result. Never demand a finding to meet a quota, and never treat reviewer agreement as independent proof.
 - **Don't mix guarding with simplification.** They're separate skills with separate triggering conditions. Guard after simplify, never during.
 - **Report files are mandatory.** Don't just summarise in chat — write the full report AND (with --json) JSON to disk for governance and traceability.
 - **Coverage is not optional.** A report without a passing coverage check is incomplete — every applicable class accounted for, every `finding` status backed by a finding that cites the class. Never mark a class `clean` to skip work: agents that didn't check a class must say so, and the check fails until they do.
-- **Pre-scan may be unavailable.** If `hermaguard-prescan` isn't installed, skip it gracefully and note it. Don't fail the review because a companion tool is missing.
+- **Pre-scan may be unavailable, and an empty pre-scan is not a clean pre-scan.** If `hermaguard-prescan` isn't installed, skip it gracefully and note it. Read `stats.state` before interpreting `findings`: only `complete` means every in-scope file was examined. `partial`, `unavailable` and `out_of_scope` must be reported as exactly that, never as "no issues". Don't fail the review because a companion tool is missing.
 - **Don't re-discover pre-scan findings.** If semgrep already found an SQL injection, Agent 2 should verify exploitability and assess impact, not "discover" it again. The finding should appear once in the report, credited to both prescan and the agent that investigated it.
 - **JSON output is additive, not replacement.** Markdown report is always written. JSON is additional when `--json` is passed. Both are equally authoritative.
 

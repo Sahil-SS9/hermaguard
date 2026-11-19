@@ -21,19 +21,50 @@ loaded skill stays lean.
       "category": "security"
     }
   ],
+  "files": [
+    {"path": "src/auth.py", "status": "examined", "examined_by": ["bandit", "ruff"], "reason": null},
+    {"path": "tools/run.rb", "status": "unsupported", "examined_by": [], "reason": "no tool configured for .rb"}
+  ],
   "stats": {
+    "state": "partial",
     "tools_run": ["bandit", "ruff"],
     "tools_skipped": ["gosec"],
     "scan_complete": false,
     "total_findings": 12,
-    "by_severity": {"CRITICAL": 0, "HIGH": 2, "MEDIUM": 5, "LOW": 5}
+    "by_severity": {"CRITICAL": 0, "HIGH": 2, "MEDIUM": 5, "LOW": 5},
+    "files_scanned": 3, "files_in_scope": 2, "files_examined": 2,
+    "files_unsupported": 1, "files_missing": 0
   }
 }
 ```
 
-`scan_complete` is `true` only when at least one applicable scanner completed
-and none was skipped. Consumers must never treat an empty `findings` array as a
-clean scan when `scan_complete` is `false`.
+`stats.state` is the field consumers must read before interpreting `findings`:
+
+| state | meaning | an empty `findings` list means |
+|---|---|---|
+| `complete` | every in-scope file was examined and no tool was skipped | no issues from the tools that ran |
+| `partial` | something was examined, but a file or tool was not (a requested file is missing, a tool is not installed or failed) | **nothing** - not a clean result |
+| `unavailable` | files were in scope but nothing could be examined | **nothing** |
+| `out_of_scope` | nothing requested is a type the scanner has a tool for | **nothing** - the change was not reviewed |
+
+Per-file `status` is one of `examined`, `not_examined`, `unsupported`
+(no tool for this type, or excluded by `--tools`) and `missing` (the path does
+not exist). Unsupported files do not stop a scan being `complete`, but they are
+listed and counted (`files_unsupported`) so a change is never silently narrowed.
+
+`scan_complete` is kept for old readers and is `true` only when
+`state == "complete"`. Consumers must never treat an empty `findings` array as a
+clean scan unless the state is `complete`. Exit code: `0` when at least one tool
+ran, `1` otherwise - read `state`, not the exit code, to judge the result.
+
+Pass long or awkward file lists with `--files-from PATH` (NUL- or
+newline-delimited). `--files` accepts comma- or newline-separated names only; a
+space-separated string is read as one file name.
+
+Severity note: the bundled parsers emit `HIGH`, `MEDIUM` and `LOW` (and raw
+`ERROR`/`WARNING` from gosec and clippy). None currently emits `CRITICAL`, so a
+CI gate of `block_on: CRITICAL` cannot trip on a scanner finding. Use `HIGH`
+to gate on high-severity scanner output.
 
 ## JSON report schema (`--json`)
 

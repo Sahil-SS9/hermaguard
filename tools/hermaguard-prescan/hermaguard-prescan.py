@@ -24,7 +24,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # Language detection: extension → list of (tool, command builder)
 LANGUAGE_TOOLS = {
@@ -562,58 +562,116 @@ def apply_suppression_rules(findings: list, rules: list) -> tuple[list, list]:
     return kept, suppressed
 
 
-def run_prescan(files: list, restrict_tools: list | None = None,
-                rules_path: str | None = None) -> dict:
-    """Main entry point. Run all applicable tools on given files.
-    Returns the output dict.
+STATES = ("complete", "partial", "unavailable", "out_of_scope")
+
+
+def derive_state(*, requested: int, in_scope: int, examined_in_scope: int,
+                 missing: int, tools_skipped: list) -> str:
+    """The single source of truth for how trustworthy a scan result is.
+
+    complete     every in-scope file was examined and no tool was skipped
+    partial      something was examined, but a file or tool was not
+    unavailable  files were in scope but nothing could be examined
+    out_of_scope nothing requested is something the scanner has a tool for
     """
-    groups = group_by_extension(files, restrict_tools)
+    if requested == 0 or (in_scope == 0 and missing == 0):
+        return "out_of_scope"
+    if in_scope == 0 or examined_in_scope == 0:
+        return "unavailable"
+    if tools_skipped or missing or examined_in_scope < in_scope:
+        return "partial"
+    return "complete"
 
-    # Collect unique tools from matching extensions
-    all_exts = []
-    for ext, data in groups.items():
-        all_exts.extend(data["files"])
-    unique_exts = list(groups.keys())
 
-    # Also add generic tools (semgrep) to any non-empty group
-    all_tools_run = set()
+def run_prescan(files: list, restrict_tools: list | None = None,
+                rules_path: str | None = None, check_exists: bool = True) -> dict:
+    """Main entry point. Run all applicable tools on given files.
+
+    Returns the output dict. `stats.state` says how far the result can be
+    trusted; an empty `findings` list is only a clean result when
+    `stats.state == "complete"`.
+    """
+    records = {f: {"path": f, "status": "pending", "examined_by": [], "reason": None}
+               for f in files}
+    present = []
+    for f, rec in records.items():
+        if check_exists and not os.path.isfile(f):
+            rec["status"], rec["reason"] = "missing", "file not found"
+        else:
+            present.append(f)
+
+    groups = group_by_extension(present, restrict_tools)
+    grouped = {f for g in groups.values() for f in g["files"]}
+    for f in present:
+        if f not in grouped:
+            records[f]["status"] = "unsupported"
+            records[f]["reason"] = "no file extension, so no tool can be chosen"
+    in_scope = set()
+    for ext, g in groups.items():
+        if g["tools"]:
+            in_scope.update(g["files"])
+        else:
+            why = "excluded by --tools" if restrict_tools and LANGUAGE_TOOLS.get(ext) \
+                else f"no tool configured for {ext}"
+            for f in g["files"]:
+                records[f]["status"], records[f]["reason"] = "unsupported", why
+
     all_findings = []
-    tools_run = []
-    tools_skipped = []
+    tools_run: list = []
+    tools_skipped: list = []
+    failures: dict = {}
 
-    # Run extension-specific tools
+    def note_run(name):
+        if name not in tools_run:
+            tools_run.append(name)
+
+    def note_skipped(entry):
+        if entry not in tools_skipped:
+            tools_skipped.append(entry)
+
+    # Language tools, one run per (tool, extension) so no group is dropped.
     for ext, g in groups.items():
         for tool in g["tools"]:
-            if tool["name"] in all_tools_run:
-                continue
-            all_tools_run.add(tool["name"])
             path = find_tool(tool["name"])
             if not path:
-                tools_skipped.append(tool["name"])
+                note_skipped(tool["name"])
+                for f in g["files"]:
+                    failures.setdefault(f, []).append(f"{tool['name']} not installed")
                 continue
-            tools_run.append(tool["name"])
             err, findings = run_tool(tool, g["files"], tempfile.gettempdir())
             if err:
-                # Move from run to skipped with the reason, once (no double-append).
-                if tool["name"] in tools_run:
-                    tools_run.remove(tool["name"])
-                tools_skipped.append(f"{tool['name']} ({err})")
+                note_skipped(f"{tool['name']} ({err})")
+                for f in g["files"]:
+                    failures.setdefault(f, []).append(err)
                 continue
+            note_run(tool["name"])
             all_findings.extend(findings)
+            for f in g["files"]:
+                if tool["name"] not in records[f]["examined_by"]:
+                    records[f]["examined_by"].append(tool["name"])
 
-    # Run generic tools (semgrep with security rules) on all files by extension, if available
-    semgrep_path = find_tool("semgrep")
-    if semgrep_path and all_exts:
-        # Only run generic semgrep if it hasn't already been run
-        if "semgrep" not in all_tools_run:
-            all_tools_run.add("semgrep")
-            tools_run.append("semgrep")
-            err, findings = run_tool(GENERIC_TOOLS[0], all_exts, tempfile.gettempdir())
-            if not err:
-                all_findings.extend(findings)
-            else:
-                tools_run.remove("semgrep")
-                tools_skipped.append(f"semgrep-generic ({err})")
+    # Opportunistic generic semgrep over any file semgrep has not yet examined.
+    generic_allowed = restrict_tools is None or "semgrep" in restrict_tools
+    pending = [f for f in present if f in grouped and "semgrep" not in records[f]["examined_by"]]
+    if generic_allowed and pending and find_tool("semgrep"):
+        err, findings = run_tool(GENERIC_TOOLS[0], pending, tempfile.gettempdir())
+        if err:
+            note_skipped(f"semgrep-generic ({err})")
+            for f in pending:
+                failures.setdefault(f, []).append(err)
+        else:
+            note_run("semgrep")
+            all_findings.extend(findings)
+            for f in pending:
+                records[f]["examined_by"].append("semgrep")
+
+    for f in present:
+        rec = records[f]
+        if rec["examined_by"]:
+            rec["status"], rec["reason"] = "examined", None
+        elif rec["status"] == "pending":
+            rec["status"] = "not_examined"
+            rec["reason"] = "; ".join(failures.get(f, [])) or "no tool ran on this file"
 
     # Deduplicate: same (file, line, tool, rule_id) = same finding
     seen = set()
@@ -632,15 +690,28 @@ def run_prescan(files: list, restrict_tools: list | None = None,
     for f in kept:
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
 
+    missing = [f for f, r in records.items() if r["status"] == "missing"]
+    examined_in_scope = sum(1 for f in in_scope if records[f]["status"] == "examined")
+    state = derive_state(requested=len(files), in_scope=len(in_scope),
+                         examined_in_scope=examined_in_scope, missing=len(missing),
+                         tools_skipped=tools_skipped)
+
     return {
         "findings": kept,
+        "files": list(records.values()),
         "stats": {
+            "state": state,
             "tools_run": tools_run,
             "tools_skipped": tools_skipped,
-            "scan_complete": bool(tools_run) and not tools_skipped,
+            # Legacy flag kept for old readers: true only for a complete scan.
+            "scan_complete": state == "complete",
             "total_findings": len(kept),
             "by_severity": by_sev,
             "files_scanned": len(files),
+            "files_in_scope": len(in_scope),
+            "files_examined": sum(1 for r in records.values() if r["status"] == "examined"),
+            "files_unsupported": sum(1 for r in records.values() if r["status"] == "unsupported"),
+            "files_missing": len(missing),
             "suppression_rules_applied": len(rules),
             "suppression_rules_source": rules_source,
             "suppressed_findings": len(suppressed),
@@ -692,7 +763,9 @@ def main():
     if not files:
         output = {
             "findings": [],
+            "files": [],
             "stats": {
+                "state": "out_of_scope",
                 "tools_run": [],
                 "tools_skipped": [],
                 "scan_complete": False,
@@ -717,6 +790,7 @@ def main():
     print(f"  Tools run: {', '.join(stats['tools_run']) if stats['tools_run'] else 'none'}")
     if stats["tools_skipped"]:
         print(f"  Tools skipped: {', '.join(stats['tools_skipped'])}")
+    print(f"  State: {stats['state']}")
     print(f"  Scan complete: {'yes' if stats['scan_complete'] else 'no'}")
     sevs = []
     for s, c in stats["by_severity"].items():

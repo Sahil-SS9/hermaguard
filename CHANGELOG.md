@@ -6,6 +6,57 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - GitHub Action and pre-scan told the truth about unfinished scans
+
+- **Security:** the Action no longer interpolates PR-controlled values (changed
+  file names, `skip_patterns`, `max_files`, `block_on`) into shell. Values go
+  through `env:`; changed files are collected with `git diff -z` and handed to
+  the scanner as a file (`--files-from`). A file named `x$(touch PWNED).py`
+  used to run in the consumer's CI.
+- **Install path:** the README told users to write `Sahil-SS9/hermaguard@v2`
+  (no root `action.yml`, no `v2` tag) and to copy a workflow file that did not
+  exist. It now documents `Sahil-SS9/hermaguard/integrations/github-action@<sha>`,
+  a complete example workflow, least-privilege `permissions`, and a warning
+  against `pull_request_target`.
+- **False "clean":** the Action passed files space-separated, which the scanner
+  read as one non-existent file (0 findings, exit 0), then posted "No
+  deterministic issues found". It also looked for the scanner without its `.py`
+  suffix inside the consumer's checkout, hid scanner failure with `|| true`, and
+  printed "No blocking findings" when no report existed.
+- The scanner now has four result states in `stats.state` - `complete`,
+  `partial`, `unavailable`, `out_of_scope` - and a per-file record (`files[]`).
+  `scan_complete` is kept and is true only for `complete`. Missing input files
+  are reported instead of ignored.
+- The Action validates the report before reading it, and writes the PR comment
+  and the exit status from the same decision. With `block_on` CRITICAL or HIGH,
+  a `partial` or `unavailable` scan fails; `out_of_scope` passes and says it was
+  not reviewed; exceeding `max_files` is `partial`, never clean. On push events
+  the summary goes to the job summary instead of a PR comment.
+- Default `skip_patterns` now match (the `\n` separators were literal text),
+  and `max_files` is compared as a number.
+- The scanner ran each tool once per tool *name*, so eslint ran for `.ts` files
+  but never for `.js`/`.tsx` files in the same change. It now runs per
+  extension group.
+- `--tools` is now honoured by the generic semgrep pass.
+
+### Removed
+
+- Unimplemented Action inputs `comment_mode`, `min_severity`, `hermaguard_args`,
+  and the placeholder "Run HermaGuard" step that only printed setup advice.
+  Passing the inputs is now ignored (GitHub warns on unknown inputs).
+
+### Changed - public skill text
+
+- Removed "adversarial reviewers should ALWAYS find something" and the
+  unmeasured "~95% coverage" claim. Zero findings from completed checks is a
+  valid result; an unfinished check is not.
+
+### Known gap
+
+- No bundled parser emits `CRITICAL`, so the default `block_on: CRITICAL`
+  cannot block on a scanner finding. Use `block_on: HIGH` to gate on
+  high-severity output. Whether to change the default is a maintainer decision.
+
 ### Changed — reviewer method: unreachable gates and end-state impact
 
 - **Edge Case Hunter** gains an *Unreachable gates* edge class: a
