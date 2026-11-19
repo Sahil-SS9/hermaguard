@@ -36,11 +36,18 @@ Exit codes: 0 = full coverage or self-check OK; 1 = coverage gaps;
 """
 
 import argparse
+import hashlib
 import json
+import posixpath
 import sys
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
+
+# Report format version. Reports without `report_version` are LEGACY: they are
+# read as before, labelled "evidence not checked", and never upgraded silently.
+# Keep in step with REPORT_VERSION in hermaguard-verify.py (a test enforces it).
+REPORT_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -101,7 +108,9 @@ CLASSES = [
     {"id": "HG-PARTIAL-WRITE", "name": "Partial write / non-atomic update (missing transaction)", "rank": None, "status": "always"},
 ]
 
-VALID_STATUSES = {"finding", "clean", "not_applicable"}
+VALID_STATUSES = {"finding", "clean", "not_applicable", "not_checked", "inconclusive"}
+# Statuses that keep a report issuable but stop it clearing a required gate.
+UNRESOLVED_STATUSES = {"not_checked", "inconclusive"}
 
 # ---------------------------------------------------------------------------
 # Registry integrity
@@ -195,23 +204,149 @@ def build_ledger(files: list) -> dict:
 # Report validation
 # ---------------------------------------------------------------------------
 
-def check_report(report: dict, ledger: dict) -> dict:
+def _norm_path(path) -> str:
+    """Normalise a repo-relative path for comparison (posix, no ./, no ..)."""
+    text = str(path or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return posixpath.normpath(text) if text else ""
+
+
+def _scope_paths(scope) -> list:
+    """`path` or `path::symbol` entries -> normalised paths."""
+    out = []
+    for item in scope if isinstance(scope, list) else []:
+        if isinstance(item, str) and item.strip():
+            out.append(_norm_path(item.split("::", 1)[0]))
+    return out
+
+
+def _resolve_inside(base, rel):
+    """Resolve `rel` under `base`; None if absolute or escaping."""
+    if base is None or not isinstance(rel, str) or not rel or Path(rel).is_absolute():
+        return None
+    base = Path(base).resolve()
+    target = (base / rel).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        return None
+    return target
+
+
+def _sha256_file(path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _check_clean_evidence(cid, entry, obs_by_id, report, ledger_files, report_dir):
+    """Return (errors, warnings) for one v2 `clean` row."""
+    errors, warnings = [], []
+    ref = entry.get("observations", entry.get("observation"))
+    refs = [ref] if isinstance(ref, str) else (ref if isinstance(ref, list) else [])
+    refs = [r for r in refs if isinstance(r, str) and r.strip()]
+    if not refs:
+        return [f"{cid}: marked clean without evidence - cite an observation, "
+                "or mark it not_checked / inconclusive"], warnings
+    revision = report.get("revision")
+    related = False
+    for oid in refs:
+        obs = obs_by_id.get(oid)
+        if obs is None:
+            errors.append(f"{cid}: cites unknown observation {oid!r}")
+            continue
+        if obs.get("revision") != revision:
+            errors.append(f"{cid}: observation {oid} is for revision {obs.get('revision')!r}, "
+                          f"the report reviews {revision!r} (stale)")
+        if not str(obs.get("check") or "").strip():
+            errors.append(f"{cid}: observation {oid} does not say which check was performed")
+        covers = obs.get("covers")
+        if not isinstance(covers, list) or cid not in covers:
+            errors.append(f"{cid}: observation {oid} does not cover this class")
+        paths = _scope_paths(obs.get("scope"))
+        if not paths:
+            errors.append(f"{cid}: observation {oid} has no bounded scope (file or file::symbol)")
+        elif not set(paths) & ledger_files:
+            errors.append(f"{cid}: observation {oid} scope {sorted(set(paths))} is unrelated to the changed files")
+        else:
+            related = True
+            outside = sorted(set(paths) - ledger_files)
+            if outside:
+                warnings.append(f"{cid}: observation {oid} also names files outside the change: {outside}")
+        kind = obs.get("kind", "manual")
+        artifact = obs.get("artifact")
+        if kind == "tool" and not artifact:
+            errors.append(f"{cid}: tool observation {oid} has no artifact")
+        if artifact:
+            if report_dir is None:
+                warnings.append(f"{cid}: artifact for {oid} not verified (no report directory)")
+            else:
+                resolved = _resolve_inside(report_dir, artifact)
+                if resolved is None or not resolved.is_file():
+                    errors.append(f"{cid}: artifact {artifact!r} for {oid} is missing or outside the report directory")
+                elif not obs.get("artifact_sha256"):
+                    errors.append(f"{cid}: artifact {artifact!r} for {oid} has no artifact_sha256")
+                elif _sha256_file(resolved) != obs["artifact_sha256"]:
+                    errors.append(f"{cid}: artifact {artifact!r} for {oid} has been altered (hash mismatch)")
+    if refs and not related and not errors:
+        errors.append(f"{cid}: no cited observation relates to the changed files")
+    return errors, warnings
+
+
+def check_report(report: dict, ledger: dict, *, report_dir=None, expect_revision=None,
+                 require_evidence: bool = False) -> dict:
     """Validate that the report accounts for every applicable class.
 
-    The report must carry a `coverage` array where each entry is
-    {class_id, status, evidence} with status in VALID_STATUSES.
+    Each coverage entry is {class_id, status, ...} with status in VALID_STATUSES.
     Every applicable ledger class must appear exactly once.
-    Finding-backed entries are cross-checked: if a class claims
-    `finding`, at least one finding in the report must cite it.
+
+    Result keys
+      issuable  structurally valid and every applicable class accounted for.
+                A partial report (some classes not_checked / inconclusive) is
+                issuable: its findings stay readable.
+      ok        the GATE: issuable AND nothing unresolved (AND, with
+                require_evidence, not a legacy report).
+      legacy / evidence_checked   see REPORT_VERSION.
+
+    v2 reports must carry `revision` and `observations[]`; a `clean` row must
+    cite observations that name the reviewed revision, a bounded scope inside
+    the change, the check performed and the class they cover.
     """
-    errors = []
+    errors, warnings = [], []
     coverage = report.get("coverage")
+    version = report.get("report_version")
+    legacy = version is None
+    if not legacy and version != REPORT_VERSION:
+        errors.append(f"unsupported report_version {version!r} (this checker reads {REPORT_VERSION} and legacy)")
+    v2 = version == REPORT_VERSION
+    base = {"legacy": legacy, "evidence_checked": v2, "unresolved": [], "warnings": warnings}
     if not isinstance(coverage, list):
-        return {
-            "ok": False,
-            "errors": ["report has no `coverage` array — coverage cannot be verified"],
-            "accounted": 0, "applicable": 0, "gaps": [c["id"] for c in ledger["classes"] if c["applicable"]],
-        }
+        errors.append("report has no `coverage` array - coverage cannot be verified")
+        return dict(base, ok=False, issuable=False, errors=errors, accounted=0, applicable=0,
+                    gaps=[c["id"] for c in ledger["classes"] if c["applicable"]])
+
+    ledger_files = {_norm_path(f) for f in ledger.get("files", [])}
+    obs_by_id = {}
+    if v2:
+        if not str(report.get("revision") or "").strip():
+            errors.append("report has no `revision` (the commit or content digest that was reviewed)")
+        elif expect_revision and report["revision"] != expect_revision:
+            errors.append(f"report reviews revision {report['revision']!r} but {expect_revision!r} "
+                          "was expected (stale report)")
+        observations = report.get("observations", [])
+        if not isinstance(observations, list):
+            errors.append("`observations` must be a list")
+            observations = []
+        for i, obs in enumerate(observations):
+            if not isinstance(obs, dict) or not str(obs.get("id") or "").strip():
+                errors.append(f"observations[{i}] needs an `id`")
+                continue
+            if obs["id"] in obs_by_id:
+                errors.append(f"observation {obs['id']!r} appears twice")
+            obs_by_id[obs["id"]] = obs
 
     seen = {}
     for i, entry in enumerate(coverage):
@@ -230,39 +365,92 @@ def check_report(report: dict, ledger: dict) -> dict:
         seen[cid] = entry
 
     applicable = [c for c in ledger["classes"] if c["applicable"]]
-    gaps = []
+    gaps, unresolved, clean_unverified = [], [], 0
+    findings = report.get("findings", [])
     for c in applicable:
         entry = seen.get(c["id"])
+        status = entry.get("status") if entry else None
         if entry is None:
             gaps.append(c["id"])
-        elif entry.get("status") == "not_applicable":
-            # Allowed only with an explicit reason — an applicable class
+        elif status == "not_applicable":
+            # Allowed only with an explicit reason - an applicable class
             # demoted to N/A must say why.
             if not entry.get("reason"):
                 errors.append(f"{c['id']}: marked not_applicable without a reason")
-        elif entry.get("status") == "finding":
-            findings = report.get("findings", [])
-            backed = any(
-                isinstance(f, dict) and c["id"] in (
-                    f.get("classes") or []) for f in findings
-            )
-            if not backed:
+        elif status in UNRESOLVED_STATUSES:
+            unresolved.append(c["id"])
+            if not str(entry.get("reason") or "").strip():
+                errors.append(f"{c['id']}: marked {status} without saying what is unresolved")
+        elif status == "finding":
+            backers = [f for f in findings if isinstance(f, dict) and c["id"] in (f.get("classes") or [])]
+            if not backers:
                 errors.append(
                     f"{c['id']}: coverage claims 'finding' but no finding cites this class "
                     f"(add `classes: [\"{c['id']}\"]` to the finding)")
+            by_id = {f.get("id"): f for f in findings if isinstance(f, dict)}
+            for fid in entry.get("backed_by") or []:
+                if fid not in by_id or c["id"] not in (by_id[fid].get("classes") or []):
+                    errors.append(f"{c['id']}: backed_by {fid!r} is not a finding that cites this class")
+        elif status == "clean":
+            if v2:
+                e, w = _check_clean_evidence(c["id"], entry, obs_by_id, report, ledger_files, report_dir)
+                errors.extend(e)
+                warnings.extend(w)
+            else:
+                clean_unverified += 1
 
     for cid in seen:
         known = {c["id"] for c in CLASSES}
         if cid not in known:
             errors.append(f"coverage cites unknown class {cid}")
 
-    return {
-        "ok": not errors and not gaps,
-        "errors": errors,
-        "accounted": len(applicable) - len(gaps),
-        "applicable": len(applicable),
-        "gaps": gaps,
-    }
+    if legacy and clean_unverified:
+        warnings.append(f"legacy report: {clean_unverified} clean row(s) carry no evidence and were NOT checked")
+    if legacy and require_evidence:
+        errors.append("legacy report: evidence is not checked, and this gate requires it")
+
+    issuable = not errors and not gaps
+    return dict(base, ok=issuable and not unresolved, issuable=issuable, errors=errors,
+                accounted=len(applicable) - len(gaps), applicable=len(applicable),
+                gaps=gaps, unresolved=unresolved)
+
+
+def render_markdown(result: dict, ledger: dict, report: dict) -> str:
+    """The report's `## Coverage Ledger` section, with evidence and gate status."""
+    by_id = {c["id"]: c for c in ledger["classes"]}
+    entries = {e.get("class_id"): e for e in report.get("coverage", []) if isinstance(e, dict)}
+    obs = {o.get("id"): o for o in report.get("observations", []) if isinstance(o, dict)}
+    if result.get("legacy"):
+        label = "LEGACY report - clean rows and verification labels were not checked against evidence"
+    else:
+        label = f"evidence checked (report_version {REPORT_VERSION}, revision {report.get('revision')})"
+    gate = "PASS" if result["ok"] else ("FAIL - partial report (issuable)" if result["issuable"] else "FAIL - not issuable")
+    lines = [f"**Gate:** {gate}. **Evidence:** {label}.", ""]
+    if result["unresolved"]:
+        lines += [f"**Unresolved (not a clean result):** {', '.join(result['unresolved'])}", ""]
+    lines += ["| Class | Name | Status | Evidence |", "|---|---|---|---|"]
+    for cid, c in by_id.items():
+        e = entries.get(cid)
+        if not c["applicable"]:
+            lines.append(f"| {cid} | {c['name']} | not_applicable | {c.get('reason', '')} |")
+            continue
+        if e is None:
+            lines.append(f"| {cid} | {c['name']} | MISSING | no coverage row |")
+            continue
+        st = e.get("status")
+        if st == "clean" and not result.get("legacy"):
+            refs = e.get("observations", e.get("observation"))
+            refs = [refs] if isinstance(refs, str) else (refs or [])
+            ev = "; ".join(f"{r}: {obs.get(r, {}).get('check', '?')} @ {', '.join(obs.get(r, {}).get('scope', []))}"
+                           for r in refs) or "NO EVIDENCE"
+        elif st == "clean":
+            ev = "legacy - not checked"
+        elif st == "finding":
+            ev = ", ".join(e.get("backed_by") or []) or "see findings"
+        else:
+            ev = e.get("reason", "")
+        lines.append(f"| {cid} | {c['name']} | {st} | {ev} |")
+    return "\n".join(lines) + "\n"
 
 
 def render_table(result: dict, ledger: dict) -> str:
@@ -289,6 +477,11 @@ def main():
     p.add_argument("--ledger", help="ledger JSON path (write with --files, read with --check-report)")
     p.add_argument("--check-report", help="report JSON to validate against the ledger")
     p.add_argument("--quiet", action="store_true", help="print only the verdict")
+    p.add_argument("--expect-revision", help="revision the report must review (stale reports fail)")
+    p.add_argument("--require-evidence", action="store_true",
+                   help="fail legacy (version-less) reports: their clean rows carry no evidence")
+    p.add_argument("--render-markdown", metavar="PATH",
+                   help="write the report's Coverage Ledger section as markdown ('-' = stdout)")
     args = p.parse_args()
 
     if args.self_check:
@@ -322,11 +515,28 @@ def main():
                 p.error("--check-report needs --files or --ledger")
             ledger = json.loads(Path(args.ledger).read_text())
         report = json.loads(Path(args.check_report).read_text())
-        result = check_report(report, ledger)
+        result = check_report(report, ledger,
+                              report_dir=Path(args.check_report).resolve().parent,
+                              expect_revision=args.expect_revision,
+                              require_evidence=args.require_evidence)
         cmap = {e.get("class_id"): e.get("status") for e in report.get("coverage", []) if isinstance(e, dict)}
         result["_coverage_map"] = cmap
         verdict = "PASS" if result["ok"] else "FAIL"
         print(f"coverage {verdict}: {result['accounted']}/{result['applicable']} applicable classes accounted for")
+        if result["legacy"]:
+            print("LEGACY report: clean rows carry no evidence and were NOT checked")
+        if result["unresolved"]:
+            print(f"unresolved (not_checked / inconclusive): {', '.join(result['unresolved'])}")
+        if not result["ok"] and result["issuable"]:
+            print("report is issuable as a PARTIAL report, but it does not clear the gate")
+        for w in result["warnings"]:
+            print(f"warning: {w}")
+        if args.render_markdown:
+            md = render_markdown(result, ledger, report)
+            if args.render_markdown == "-":
+                print(md)
+            else:
+                Path(args.render_markdown).write_text(md)
         if result["gaps"]:
             print(f"gaps: {', '.join(result['gaps'])}")
         for e in result["errors"]:

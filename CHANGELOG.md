@@ -39,6 +39,31 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   extension group.
 - `--tools` is now honoured by the generic semgrep pass.
 
+### Added - evidence for "clean" and "verified" (report_version 2)
+
+- **Clean needs evidence.** In a `report_version: 2` report a `clean` coverage row
+  must cite an observation naming the reviewed revision, a bounded scope inside
+  the change, the check performed and the class covered. A bare `clean`, an
+  unknown observation, a missing or altered artifact, a wrong revision and an
+  unrelated scope all fail. New statuses `not_checked` and `inconclusive` let a
+  review say what it did not establish; a report containing them is issuable as
+  a partial report but does not clear the gate. `hermaguard-coverage` gains
+  `--expect-revision`, `--require-evidence` and `--render-markdown`.
+- **Verified needs the verifier's record.** `hermaguard-verify` now writes a
+  record bound by content hash to the finding, revision, target, PoC and
+  expected result, with output redacted. The report gate admits a hard-class
+  finding as VERIFIED only if its referenced record exists, is unaltered and
+  matches. Unadmitted findings stay in the report as UNVERIFIED (previously the
+  whole report was rejected) and the gate fails. Failures are classified as
+  absent, invalid, altered, mismatched, stale, refuted, contradictory or
+  unverified. `--repo-root` detects a changed target; `--rerun` (opt-in) re-runs
+  the PoC. Records are hashed, not signed.
+- **Compatibility.** Reports without `report_version` are legacy: still read, now
+  labelled "evidence not checked", never certified. The schema docs previously
+  linked coverage to findings with `backed_by` while the checker read
+  `classes`; `classes` is now documented as the authority and `backed_by` is
+  validated as an optional cross-reference.
+
 ### Removed
 
 - Unimplemented Action inputs `comment_mode`, `min_severity`, `hermaguard_args`,

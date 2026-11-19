@@ -121,9 +121,22 @@ The consolidator writes this alongside the markdown report:
     "config_affected": ["PAYMENT_TIMEOUT_MS"],
     "revert_safety": {"safe": true, "procedure": "Roll back commit, no migration needed"}
   },
+  "report_version": 2,
+  "revision": "9f3c2d1e8a7b6c5d4e3f20191817161514131211",
+  "observations": [
+    {
+      "id": "OBS-1",
+      "kind": "manual",
+      "revision": "9f3c2d1e8a7b6c5d4e3f20191817161514131211",
+      "scope": ["src/handler.ts::processPayment"],
+      "check": "traced every query built in processPayment for string concatenation",
+      "covers": ["CWE-89"]
+    }
+  ],
   "coverage": [
     {"class_id": "CWE-362", "status": "finding", "backed_by": ["HG-001"]},
-    {"class_id": "CWE-89", "status": "clean"},
+    {"class_id": "CWE-89", "status": "clean", "observation": "OBS-1"},
+    {"class_id": "HG-ASYNC", "status": "not_checked", "reason": "event handlers not traced"},
     {"class_id": "CWE-787", "status": "not_applicable", "reason": "memory-unsafe class N/A for this language"}
   ],
   "verdict": {
@@ -137,6 +150,48 @@ The consolidator writes this alongside the markdown report:
   }
 }
 ```
+
+### Report versions and evidence
+
+`report_version: 2` reports are checked for evidence. Reports without the field
+are **legacy**: they still load and render, are labelled "evidence not checked",
+and are never upgraded silently (`--require-evidence` makes the gates fail them).
+
+**Coverage statuses.** `finding`, `clean`, `not_applicable`, `not_checked`,
+`inconclusive`. `not_applicable`, `not_checked` and `inconclusive` need a
+`reason`. A report with `not_checked` / `inconclusive` rows is *issuable* (its
+findings stay readable) but does not clear the gate; a missing row is a gap and
+is not issuable.
+
+**A `clean` row must cite evidence.** `observation` (or `observations`) names
+entries in the report's `observations[]`. Each observation needs: `id`, the
+`revision` reviewed (must equal the report's), a bounded `scope` (`path` or
+`path::symbol`, at least one path inside the changed files), the `check` that
+was performed, and `covers` listing the class ids it supports. One observation
+may support many rows. `kind` is `manual` (default) or `tool`; a tool
+observation needs an `artifact` path (relative to the report, may not escape it)
+and its `artifact_sha256`, and a declared artifact must exist and match.
+
+**Findings link to coverage** through `classes` (the authority). `backed_by` is
+an optional cross-reference whose ids must be findings that cite the class.
+
+**Hard-class findings** (CWE-362, HG-ASYNC, HG-PARTIAL-WRITE, CWE-416) count as
+VERIFIED only through a verifier record:
+
+```json
+"verification": {"verdict": "VERIFIED", "record": "verify-hg001.json", "record_sha256": "<64 hex>"}
+```
+
+`hermaguard-verify --json` writes the record: `binding` (finding id and classes,
+reviewed `revision`, target path/`sha256`/symbol, PoC path/`sha256`, expected
+result), the redacted run evidence, and a `record_sha256` over the whole record.
+The gate admits the claim only if the record exists inside the evidence
+directory, hashes correctly, and matches the finding, revision, target and
+result. Otherwise the finding stays in the report as `UNVERIFIED` (or `REFUTED`)
+and the gate fails. Failure classes: `absent`, `invalid`, `altered`,
+`mismatched`, `stale`, `refuted`, `contradictory`, `unverified`. Records are
+hashed, not signed: they stop copied, stale and edited records, not a forger who
+can rewrite a record and its hash.
 
 ## Project config (optional `.kensei/hermaguard.yaml`)
 

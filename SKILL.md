@@ -152,13 +152,23 @@ hermaguard-coverage --files <changed-files-list> --ledger /tmp/hermaguard/ledger
 
 The registry covers the 2024 MITRE CWE Top 25 (verified against cwe.mitre.org) plus race conditions, resource leaks, exception handling, and 4 Hermaguard-native classes (async rejection, degenerate handlers, state transitions, partial writes). Language rules mark memory-unsafe classes N/A for safe languages (CWE-787/125/416/119 for Python/TS/Go/Java; Rust keeps them as hints via `unsafe`).
 
-**This ledger is the accountability contract for the report.** The consolidator MUST produce a `coverage` array where every applicable class appears exactly once with status `finding` (backed by a real finding citing `classes: ["CWE-89"]`), `clean` (checked, no issue), or `not_applicable` (with reason). Validate before shipping the report:
+**This ledger is the accountability contract for the report.** The consolidator MUST produce a `coverage` array where every applicable class appears exactly once with one of these statuses:
+
+- `finding` - backed by a real finding that cites `classes: ["CWE-89"]`.
+- `clean` - checked, nothing found, **and supported**: cite an observation (`observation: "OBS-1"`) that names the reviewed `revision`, a bounded `scope` inside the change (`path` or `path::symbol`), the `check` that was performed and the classes it `covers`. One observation may back several rows if it really covered them. A bare `clean` is invalid in a version 2 report.
+- `not_applicable` - with a `reason`.
+- `not_checked` / `inconclusive` - with a `reason`. These are honest answers, not failures: use them instead of inventing a clean result. A report containing them can still be issued (its findings stay readable) but does not clear a required gate.
+
+Reports carry `report_version: 2` and the reviewed `revision` (commit or content digest). Reports without `report_version` are legacy: they are read as before and labelled "evidence not checked", never silently upgraded. Validate before shipping the report:
 
 ```bash
 hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
+# optional: --expect-revision <head>   stale reports fail
+#           --require-evidence         legacy reports fail
+#           --render-markdown -        emit the Coverage Ledger section
 ```
 
-Exit 1 = coverage gaps = the report is incomplete. No exceptions. A review that silently skips bug classes is theatre — the coverage check is what makes it accountable.
+Exit 1 = the gate did not pass. Missing rows or unsupported `clean` rows make the report not issuable: fix them. `not_checked` / `inconclusive` rows leave it issuable as a partial report. A review that silently skips bug classes is theatre - the coverage check is what makes it accountable.
 
 ### Phase 0d: Research Pre-Pass (locate + role patterns + sanitize)
 
@@ -302,14 +312,18 @@ double-spend, injection echo, wrong output), WRITE the PoC and RUN it:
 ```bash
 python3 tools/hermaguard-verify/hermaguard-verify.py \
   --poc /tmp/hermaguard/poc-hg001.py --target src/app.py \
-  --expect-fail --expect-output 'TypeError' \
-  --finding '{"id":"HG-001","classes":["CWE-476"]}' \
+  --expect-fail --expect-output 'TypeError' --revision <reviewed-commit> \
+  --finding '{"id":"HG-001","classes":["CWE-476"],"file":"src/app.py"}' \
   --json /tmp/hermaguard/verify-hg001.json
 ```
 
 The verdict (VERIFIED / REFUTED / UNVERIFIED) comes from EXECUTION EVIDENCE —
-subprocess exit code and output — never from model self-report. Attach the
-verdict to the finding as `verification: {verdict, signal, exit_code}`.
+subprocess exit code and output — never from model self-report. The `--json`
+file is a verification *record*, bound by content hash to the finding id, the
+reviewed revision, the target path and digest, the PoC digest and the expected
+result (stored output is redacted). Reference it from the finding:
+`verification: {verdict, record: "verify-hg001.json", record_sha256: "<hash from the record>"}`.
+Typing `verdict: VERIFIED` without a matching record proves nothing.
 A REFUTED finding is a false positive caught before it wasted the author's
 time — drop it or downgrade it to an honest note. An UNVERIFIED finding is
 labelled as such in the report; never present it as confirmed.
@@ -323,8 +337,15 @@ Before shipping the report, run:
 python3 tools/hermaguard-verify/hermaguard-verify.py --check-report report.json
 ```
 
-Exit 1 = a hard-class finding lacks VERIFIED evidence. Fix it or downgrade the
-claim — the gate is non-negotiable.
+Exit 1 = a hard-class finding is not backed by a matching, unaltered verifier
+record. The finding stays in the report, labelled UNVERIFIED (or REFUTED), and
+the gate fails: fix it, verify it properly, or leave it honestly unverified. The
+check classifies each failure as absent, stale, mismatched, altered, refuted,
+contradictory or unverified. Add `--repo-root` to also detect a target that has
+changed since the record was made, and `--rerun` to re-execute the recorded PoC
+(it runs code; the sandbox does not block the network, so use a trusted runner).
+Records carry a content hash, not a signature: they stop copied, stale and edited
+records, not someone who can rewrite a record and its hash.
 
 **Scope exclusions — DO NOT comment on:**
 - Code style, formatting, naming conventions
@@ -424,13 +445,13 @@ After all 3 subagents return, merge their findings:
 
 4. **Incorporate pre-scan findings:** Pre-scan findings that weren't duplicated by any agent still go in the report, marked `source: prescan` with the tool name. They're lower confidence until an agent investigates, but they're real static analysis hits.
 
-5. **Build the coverage array (mandatory):** Using the Phase 0c ledger, emit one coverage entry per applicable class — `finding` (a finding in this report cites it via its `classes` field), `clean` (agents checked it, nothing found), or `not_applicable` (with reason). Then validate:
+5. **Build the coverage array (mandatory):** Using the Phase 0c ledger, emit one coverage entry per applicable class — `finding` (a finding in this report cites it via its `classes` field), `clean` (supported by a cited observation: revision, scope, check, classes covered), `not_applicable` (with reason), or `not_checked` / `inconclusive` (with reason) for anything you did not or could not establish. Set `report_version: 2` and `revision`. Then validate:
 
    ```bash
    hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
    ```
 
-   If validation fails (exit 1), do NOT ship the report — fill the gaps or re-dispatch the agent that missed the class. Findings must cite their classes (`classes: ["CWE-89", "CWE-362"]`) so claims and coverage stay consistent.
+   If validation fails (exit 1), fix what it names: fill gaps, add the missing evidence, or downgrade the claim to `not_checked` / `inconclusive`. Never mark a class `clean` to make the check pass. Findings must cite their classes (`classes: ["CWE-89", "CWE-362"]`) so claims and coverage stay consistent.
 
 6. **Generate the report**
 
@@ -510,7 +531,7 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 
 ## Coverage Ledger
 
-{One row per applicable class: class id, name, status (finding/clean/not_applicable), and for findings the finding ID that backs it. Generated from the Phase 0c ledger and validated with hermaguard-coverage --check-report. This section is what makes the review accountable — a missing row is an unreviewed bug class.}
+{One row per applicable class: class id, name, status (finding/clean/not_applicable/not_checked/inconclusive), and the evidence: the backing finding ID, the cited observation (check and scope), or the reason. Generate it with `hermaguard-coverage --check-report ... --render-markdown -`, which also states the gate result and labels legacy reports "evidence not checked". A missing row is an unreviewed bug class; a not_checked row is an honest gap, not a pass.}
 
 ---
 
@@ -533,7 +554,7 @@ Output a structured markdown report AND (if `--json` flag was passed) a JSON fil
 **No fixes were applied by this review.** Findings to be picked up by a coding agent as separate tasks.
 ```
 
-**JSON output schema:** six top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason — the accountability ledger), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
+**JSON output schema:** six top-level keys — `meta` (timestamp, scope, diff_ref, version, prescan stats), `summary` (total + per-severity counts), `findings[]` (id, severity, source_agent, cross_agent_agreement, file, line_range, trigger_condition, consequence, recommendation, exploit_poc, classes, source_prescan + prescan_tool/prescan_rule when applicable), `blast_radius` (callers, downstream, config_affected, revert_safety), `coverage[]` (class_id, status, reason, observation, backed_by — the accountability ledger), top-level `report_version`, `revision` and `observations[]` (the evidence clean rows cite), and `verdict` (overall_risk + recommended_actions buckets). Full worked example in `references/output-schema.md`. Feedback MCP `record_findings` consumes this shape verbatim.
 
 ---
 
