@@ -29,8 +29,7 @@ Synthesised from 8 implementations (Trail of Bits `differential-review`, BMAD `e
 
 **Do NOT invoke if:**
 - Tests are failing (fix tests first — you can't hunt bugs in broken code)
-- No code was modified (config/docs-only changes)
-- The change is a one-liner with no control flow (trivial assignment, typo fix)
+- The diff changes only presentation or wording, not behaviour. Do not skip a one-line permission, registration, default or test-contract change on the basis of size or file extension.
 - Already guarded this diff in the last 10 minutes (dedup)
 
 ## Slash Command
@@ -116,17 +115,15 @@ Pure LLM agents guess at what might be wrong. Static analysis tools (semgrep, ba
 ### Phase 0: Scope Detection
 
 ```bash
-# Detect changes — try unstaged first, then staged, then branch diff
-git diff --name-only -- '*.ts' '*.tsx' '*.js' '*.py' '*.go' '*.rs' '*.java' 2>/dev/null
-# If empty, try staged:
-git diff --cached --name-only -- '*.ts' '*.tsx' '*.js' '*.py' '*.go' '*.rs' '*.java'
-# If still empty, try branch diff:
-git diff --name-only $(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo main)...HEAD -- '*.ts' '*.tsx' '*.js' '*.py' '*.go' '*.rs' '*.java'
+# Inspect the requested diff before filtering by language. For auto scope:
+git diff --name-status
+# If empty, inspect the staged diff:
+git diff --cached --name-status
+# For branch review, use the actual PR base and head:
+git diff --name-status "$BASE_SHA...$HEAD_SHA"
 ```
 
-Skip: test files (`*.test.*`, `*.spec.*`, `tests/`, `__tests__/`), config files (`*.json`, `*.yaml`, `*.toml`, `*.md`), generated code, vendored deps.
-
-If no files found: "No code changes to guard." Stop.
+Select by effect, not by file extension or line count: include manifests, configuration, skill or tool registrations, changed defaults, permission changes and tests when they define behaviour or an enforced contract. Send only files the scanner supports to it; list the remaining in-scope files for manual review, and keep the two lists separate in the report so a reader can tell what a tool examined from what a person read. Skip prose-only, generated and vendored changes that do not define the reviewed behaviour. If nothing is in scope, report `out of scope`, never `clean`.
 
 ### Phase 0b: Deterministic Pre-Scan
 
@@ -434,18 +431,19 @@ Context: Changed files PLUS grep/rg for all callers and callees
 
 After all 3 subagents return, merge their findings:
 
-1. **De-duplicate:** Same bug found by multiple agents → keep the most detailed version, note cross-agent agreement
-2. **Triage by risk tier:**
+1. **De-duplicate by root cause:** Same root cause found by multiple agents → one finding with the most detailed explanation, noting cross-agent agreement. Keep every distinct trigger and impact under that one finding; never drop a second trigger to reduce a count. Agreement between reviewers is not independent proof.
+2. **Triage before calling something a defect.** For each candidate, state the requirement or contract it violates, the location, who is affected, the concrete consequence and the evidence. Check known issues, documented exceptions and intended behaviour first: a documented, deliberate exception is not a defect. Keep confirmed defects, unverified risks, questions about an unclear contract, optional advice, duplicates and accepted risks as separate categories. A scanner warning starts an investigation; it never sets the verdict. A positive requirement ("must support X") does not prohibit other values unless the contract says so.
+3. **Triage by risk tier:**
    - **CRITICAL:** Data loss, auth bypass, security exploit, unrecoverable state corruption
    - **HIGH:** Production outage risk, silent failure, race condition with user-visible impact
    - **MEDIUM:** Edge case with degraded UX, missing error handling in non-critical path, observability gap
    - **LOW:** Minor edge case unlikely to trigger, missing guard on validated input, cosmetic in logs
 
-3. **Cross-reference:** If Agent 3 found a caller that Agent 2 flagged as vulnerable, escalate the finding severity. Also escalate when Agent 2 flags an auth/security vulnerability and Agent 3 confirms the affected surface is externally accessible (endpoint without auth gate, public API, config exposed to untrusted callers) — the blast radius finding provides independent confirmation of exploitability.
+4. **Cross-reference:** If Agent 3 found a caller that Agent 2 flagged as vulnerable, escalate the finding severity. Also escalate when Agent 2 flags an auth/security vulnerability and Agent 3 confirms the affected surface is externally accessible (endpoint without auth gate, public API, config exposed to untrusted callers) — the blast radius finding provides independent confirmation of exploitability.
 
-4. **Incorporate pre-scan findings:** Pre-scan findings that weren't duplicated by any agent still go in the report, marked `source: prescan` with the tool name. They're lower confidence until an agent investigates, but they're real static analysis hits.
+5. **Incorporate pre-scan findings:** Pre-scan findings that weren't duplicated by any agent still go in the report, marked `source: prescan` with the tool name. They're lower confidence until an agent investigates, but they're real static analysis hits.
 
-5. **Build the coverage array (mandatory):** Using the Phase 0c ledger, emit one coverage entry per applicable class — `finding` (a finding in this report cites it via its `classes` field), `clean` (supported by a cited observation: revision, scope, check, classes covered), `not_applicable` (with reason), or `not_checked` / `inconclusive` (with reason) for anything you did not or could not establish. Set `report_version: 2` and `revision`. Then validate:
+6. **Build the coverage array (mandatory):** Using the Phase 0c ledger, emit one coverage entry per applicable class — `finding` (a finding in this report cites it via its `classes` field), `clean` (supported by a cited observation: revision, scope, check, classes covered), `not_applicable` (with reason), or `not_checked` / `inconclusive` (with reason) for anything you did not or could not establish. Set `report_version: 2` and `revision`. Then validate:
 
    ```bash
    hermaguard-coverage --check-report report.json --ledger /tmp/hermaguard/ledger-{hash}.json
@@ -453,9 +451,9 @@ After all 3 subagents return, merge their findings:
 
    If validation fails (exit 1), fix what it names: fill gaps, add the missing evidence, or downgrade the claim to `not_checked` / `inconclusive`. Never mark a class `clean` to make the check pass. Findings must cite their classes (`classes: ["CWE-89", "CWE-362"]`) so claims and coverage stay consistent.
 
-6. **Generate the report**
+7. **Generate the report**
 
-7. **Auto-severity grading (L0–L6).** After the JSON report is written, run the
+8. **Auto-severity grading (L0–L6).** After the JSON report is written, run the
    deterministic grader to attach an action-graded `L_level` to every finding.
    This step is **ADDITIVE** — it never mutates existing fields, only adds
    `L_level` / `harm_axes` / `L_definition` / `grading_method` to each finding
@@ -629,6 +627,8 @@ No fixes applied. Handing findings to a coding agent.
 ## Pitfalls
 
 - **Don't guard code you don't understand.** If you can't trace the full call graph, mark findings as lower confidence.
+- **Re-review the fix, not just the diff.** A fix can introduce its own defects. After remediation, review the *changed revision* and record, per finding, `fixed`, `partial`, `not_addressed` or `regressed` with fresh evidence from that revision. A fix that behaves differently at the new head is not closed automatically, and a verified fix for one revision does not certify another. The reviewer recommends; it does not fix, merge or deploy.
+- **Keep incomplete reviews visible.** Report the findings you have and the checks still outstanding separately. A skipped or unfinished check makes the review `partial`; only a complete ledger with supported clean rows may support a clean verdict.
 - **Don't fabricate findings.** An empty agent report IS valid. False positives erode trust faster than missed bugs.
 - **Don't fight the blast radius agent.** If it says "safe to revert," believe it unless you have concrete contrary evidence.
 - **Accept an evidenced zero.** Ask for another pass only when you can name an unchecked part of the diff or evidence that contradicts the conclusion. An empty result from completed checks is valid; missing input or an unfinished check is not a clean result. Never demand a finding to meet a quota, and never treat reviewer agreement as independent proof.

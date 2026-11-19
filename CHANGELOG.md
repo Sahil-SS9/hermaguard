@@ -64,6 +64,21 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `classes`; `classes` is now documented as the authority and `backed_by` is
   validated as an optional cross-reference.
 
+### Changed - public skill policy aligned (scope, triage, fix re-review)
+
+- Scope is now chosen by effect, not file extension or line count: a one-line
+  permission, registration, default or test-contract change is in scope; prose-only
+  changes are `out of scope`, never `clean`. The Phase 0 commands no longer
+  filter by extension before review.
+- Consolidation de-duplicates by root cause but keeps every distinct trigger and
+  impact, and adds a triage step before anything is called a defect (violated
+  requirement, location, affected party, consequence, evidence; known issues and
+  documented exceptions first; scanner warnings start an investigation).
+- New pitfalls: re-review the fix on the new revision and record `fixed`,
+  `partial`, `not_addressed` or `regressed`; keep incomplete reviews visible.
+- Added `references/policy-examples.md` (12 worked cases) and `test_policy.py`,
+  which pins the skill text to them.
+
 ### Removed
 
 - Unimplemented Action inputs `comment_mode`, `min_severity`, `hermaguard_args`,
