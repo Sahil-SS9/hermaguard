@@ -120,11 +120,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unmeasured "~95% coverage" claim. Zero findings from completed checks is a
   valid result; an unfinished check is not.
 
-### Known gap
+### Changed - Action default gate is now HIGH
 
-- No bundled parser emits `CRITICAL`, so the default `block_on: CRITICAL`
-  cannot block on a scanner finding. Use `block_on: HIGH` to gate on
-  high-severity output. Whether to change the default is a maintainer decision.
+- No bundled parser emits `CRITICAL`, so the old default `block_on: CRITICAL`
+  could never block on a scanner finding. The default is now `HIGH`, and an
+  unrecognised `block_on` value fails closed to `HIGH`. Users who set
+  `block_on` explicitly are unaffected; set `CRITICAL` or `never` to keep the old
+  behaviour.
 
 ### Changed — reviewer method: unreachable gates and end-state impact
 

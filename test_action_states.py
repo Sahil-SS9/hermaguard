@@ -95,7 +95,7 @@ class ActionHarness(unittest.TestCase):
         return tree / "integrations" / "github-action"
 
     def run_case(self, changed, *, scanner_mode="real", tools=("ruff", "bandit"),
-                 block_on="CRITICAL", max_files="50", skip="*.test.*,*.spec.*,*.md,*.json,*.yaml",
+                 block_on="HIGH", max_files="50", skip="*.test.*,*.spec.*,*.md,*.json,*.yaml",
                  prescan_enabled="true", push_event=False, bandit_json=None,
                  fixed_report=None, extra_env=None):
         self.base = self.git("rev-parse", "HEAD").strip()
@@ -284,9 +284,20 @@ class ResultStates(ActionHarness):
         self.assertEqual(r.state, "unavailable")
         self.assertNotIn("No issues found", r.comment)
 
-    def test_unknown_block_on_fails_closed_to_critical_with_note(self):
+    def test_default_gate_is_high_and_blocks_a_high_finding(self):
+        text = ACTION_YML.read_text()
+        self.assertRegex(text, r"block_on:\n(?:.*\n)*?\s+default: 'HIGH'")
+        r = self.run_case({"a.py": self.VULN}, bandit_json=self.bandit_high("a.py"))  # harness default = action default
+        self.assertEqual((r.state, r.exit_code), ("complete", 1))
+
+    def test_explicit_critical_gate_passes_a_high_finding_and_says_why(self):
+        r = self.run_case({"a.py": self.VULN}, block_on="CRITICAL", bandit_json=self.bandit_high("a.py"))
+        self.assertEqual((r.state, r.exit_code), ("complete", 0))
+        self.assertIn("do not currently emit CRITICAL", r.comment)
+
+    def test_unknown_block_on_fails_closed_to_high_with_note(self):
         r = self.run_case({"a.py": "x = 1\n"}, block_on="bogus")
-        self.assertEqual(r.decision["block_on"], "CRITICAL")
+        self.assertEqual(r.decision["block_on"], "HIGH")
         self.assertIn("unrecognised block_on", r.comment)
 
     def test_hostile_finding_text_is_inert_in_the_comment(self):

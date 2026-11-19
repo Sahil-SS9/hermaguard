@@ -174,14 +174,14 @@ jobs:
     steps:
       - uses: Sahil-SS9/hermaguard/integrations/github-action@<full-commit-sha>
         with:
-          block_on: CRITICAL  # CRITICAL, HIGH or never
+          block_on: HIGH  # HIGH (default), CRITICAL or never
 ```
 
 Replace `<full-commit-sha>` with the 40-character commit you reviewed.
 
 **Do not run this on `pull_request_target`.** That trigger gives code from a fork access to your secrets and a write token. Plain `pull_request` runs fork code with a read-only token, which is what a scanner needs.
 
-The check reports one of four states: `complete`, `partial`, `unavailable` or `out_of_scope`. "No issues found" appears only for `complete`. With `block_on: CRITICAL` or `HIGH`, a partial or unavailable scan fails the check, and a change with nothing the scanner covers passes but is labelled "not reviewed". Note that the bundled scanners report `HIGH`/`MEDIUM`/`LOW` and none currently reports `CRITICAL`, so use `block_on: HIGH` if you want findings to fail the check.
+The check reports one of four states: `complete`, `partial`, `unavailable` or `out_of_scope`. "No issues found" appears only for `complete`. With `block_on: HIGH` (the default) or `CRITICAL`, a partial or unavailable scan fails the check, and a change with nothing the scanner covers passes but is labelled "not reviewed". The bundled scanners report `HIGH`/`MEDIUM`/`LOW` and none currently reports `CRITICAL`, which is why the default is `HIGH`: `block_on: CRITICAL` cannot fail on a scanner finding.
 
 CI runs the deterministic pre-scan only. The full adversarial review is interactive (`/hermaguard`); the Action never calls an LLM.
 

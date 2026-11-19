@@ -63,8 +63,8 @@ space-separated string is read as one file name.
 
 Severity note: the bundled parsers emit `HIGH`, `MEDIUM` and `LOW` (and raw
 `ERROR`/`WARNING` from gosec and clippy). None currently emits `CRITICAL`, so a
-CI gate of `block_on: CRITICAL` cannot trip on a scanner finding. Use `HIGH`
-to gate on high-severity scanner output.
+CI gate of `block_on: CRITICAL` cannot trip on a scanner finding. The Action's
+default is therefore `block_on: HIGH`.
 
 ## JSON report schema (`--json`)
 

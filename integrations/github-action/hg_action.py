@@ -150,7 +150,7 @@ def normalise_block_on(raw: str) -> tuple[str, str | None]:
     value = (raw or "").strip().upper()
     if value in ("CRITICAL", "HIGH", "NEVER"):
         return value.lower() if value == "NEVER" else value, None
-    return "CRITICAL", f"unrecognised block_on {safe(raw, 40)!r}; treated as CRITICAL"
+    return "HIGH", f"unrecognised block_on {safe(raw, 40)!r}; treated as HIGH"
 
 
 def load_report(path: Path, expected_files: list[str]) -> tuple[dict | None, str | None]:
@@ -278,7 +278,7 @@ def render_comment(*, state, reason, manifest, report, counts, decision_text, to
 def cmd_report(env) -> int:
     work = Path(env.get("RUNNER_TEMP") or ".") / "hermaguard"
     manifest = json.loads((work / "manifest.json").read_text(encoding="utf-8"))
-    block_on, block_note = normalise_block_on(env.get("BLOCK_ON", "CRITICAL"))
+    block_on, block_note = normalise_block_on(env.get("BLOCK_ON", "HIGH"))
     prescan_enabled = env.get("PRESCAN_ENABLED", "true").strip().lower() == "true"
     scan_list = [] if manifest["over_cap"] else manifest["in_scope"]
     tool_exit_path = work / "scan_exit"

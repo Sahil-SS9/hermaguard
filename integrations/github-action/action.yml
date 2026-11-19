@@ -6,9 +6,11 @@ description: >
 inputs:
   block_on:
     description: >
-      Severity that fails the check: CRITICAL, HIGH or never. With CRITICAL or
-      HIGH, a partial or unavailable scan also fails - it is not a pass.
-    default: 'CRITICAL'
+      Severity that fails the check: HIGH (default), CRITICAL or never. With HIGH
+      or CRITICAL, a partial or unavailable scan also fails - it is not a pass.
+      Note: the bundled scanners do not currently report CRITICAL, so CRITICAL
+      cannot fail on a scanner finding.
+    default: 'HIGH'
   max_files:
     description: If more in-scope files than this changed, none are scanned and the result is partial.
     default: '50'
